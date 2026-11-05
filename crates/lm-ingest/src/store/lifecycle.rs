@@ -52,6 +52,18 @@ impl FsChunkStore {
     /// 呼ばれても片方だけが成功し、開始時刻は上書きされない（自動削除の期限を延ばせない）。
     /// 録音の取り込みは、チャンクを保存する前に必ずこれを呼ぶこと（`save_chunk` は同意の記録が無ければ拒否する）。
     pub fn begin_recording(&self, id: &str, meta: &RecordingMeta) -> Result<(), IngestError> {
+        self.begin_recording_with(id, meta, write_new_atomic)
+    }
+
+    /// `begin_recording` の本体。`create` はメタを「無ければ作る」操作（テストで失敗を再現する）。
+    /// メタを作れなかったら、このために作った空のディレクトリを片付ける（メタの無い録音を残さない。
+    /// 中身のあるディレクトリは消えない）。
+    pub(super) fn begin_recording_with(
+        &self,
+        id: &str,
+        meta: &RecordingMeta,
+        create: impl FnOnce(&Path, &[u8]) -> Result<bool, IngestError>,
+    ) -> Result<(), IngestError> {
         if !meta.consent_confirmed {
             return Err(IngestError::Consent(
                 "同意が確認されていないため録音を始められません".into(),
@@ -60,12 +72,15 @@ impl FsChunkStore {
         validate_sample_rate(meta.sample_rate)?;
         let dir = self.dir(id)?;
         ensure_real_dir(&dir)?;
-        if write_new_atomic(&dir.join(META_FILE), meta_text(meta).as_bytes())? {
-            Ok(())
-        } else {
-            Err(IngestError::InvalidFormat(format!(
+        match create(&dir.join(META_FILE), meta_text(meta).as_bytes()) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(IngestError::InvalidFormat(format!(
                 "同じ id の録音が既にあります: {id}"
-            )))
+            ))),
+            Err(e) => {
+                let _ = fs::remove_dir(&dir); // 空のときだけ消える
+                Err(e)
+            }
         }
     }
 

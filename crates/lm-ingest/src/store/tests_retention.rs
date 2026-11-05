@@ -105,20 +105,57 @@ fn deletions_per_run_are_capped_and_the_rest_wait_for_next_time() {
     let _ = fs::remove_dir_all(&root);
 }
 
-#[test]
-fn recordings_without_readable_meta_are_kept_and_reported() {
-    let root = temp_root("purge-nometa");
-    let store = FsChunkStore::new(&root);
-    // メタなしの録音（チャンクだけがある）を直接作る。
-    fs::create_dir_all(root.join("nometa")).unwrap();
+/// メタなしの録音（チャンクだけがある）を直接作る。ディレクトリの更新時刻は「今」になる。
+fn make_without_meta(root: &std::path::Path, id: &str) {
+    fs::create_dir_all(root.join(id)).unwrap();
     fs::write(
-        root.join("nometa").join(chunk_file_name(0)),
+        root.join(id).join(chunk_file_name(0)),
         encode(&chunk(0, 10)),
     )
     .unwrap();
-    let r = store.purge_expired(BASE + 1000 * DAY, 1).unwrap();
-    assert!(r.deleted.is_empty());
-    assert_eq!(r.kept_with_reason.len(), 1, "{:?}", r.kept_with_reason);
+}
+
+fn real_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
+#[test]
+fn recordings_without_readable_meta_are_purged_by_directory_age_when_old_enough() {
+    let root = temp_root("purge-nometa-old");
+    let store = FsChunkStore::new(&root);
+    make_without_meta(&root, "nometa");
+    // 保持期間を十分に過ぎた時刻（ディレクトリの更新時刻から 1000 日後）で呼ぶ。
+    let r = store.purge_expired(real_now_ms() + 1000 * DAY, 1).unwrap();
+    assert_eq!(r.deleted, ["nometa"], "{r:?}");
+    assert!(!root.join("nometa").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn recordings_without_readable_meta_that_were_updated_recently_are_kept_and_reported() {
+    let root = temp_root("purge-nometa-new");
+    let store = FsChunkStore::new(&root);
+    make_without_meta(&root, "nometa");
+    // 壊れたメタがあるだけの録音も同じ。
+    fs::create_dir_all(root.join("broken")).unwrap();
+    fs::write(root.join("broken").join("meta.txt"), "壊れている").unwrap();
+    let r = store.purge_expired(real_now_ms(), 1).unwrap();
+    assert!(r.deleted.is_empty(), "{r:?}");
+    assert_eq!(r.kept_with_reason.len(), 2, "{:?}", r.kept_with_reason);
+    assert!(root.join("nometa").exists() && root.join("broken").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_clock_set_back_deletes_nothing_even_for_unreadable_recordings() {
+    let root = temp_root("purge-nometa-back");
+    let store = FsChunkStore::new(&root);
+    make_without_meta(&root, "nometa");
+    let r = store.purge_expired(MIN_PLAUSIBLE_MS + 1, 1).unwrap();
+    assert!(r.deleted.is_empty(), "{r:?}");
     assert!(root.join("nometa").exists());
     let _ = fs::remove_dir_all(&root);
 }

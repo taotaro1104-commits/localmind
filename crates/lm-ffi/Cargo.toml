@@ -21,6 +21,7 @@ bindgen = ["uniffi/cli"]
 onnx = ["lm-search/onnx"]
 
 [dependencies]
+lm-ingest = { path = "../lm-ingest" }
 lm-router = { path = "../lm-router" }
 lm-search = { path = "../lm-search", features = ["lindera", "sqlite"] }
 lm-workspace = { path = "../lm-workspace" }

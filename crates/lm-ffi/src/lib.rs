@@ -6,11 +6,15 @@
 #[cfg(feature = "onnx")]
 mod e5;
 mod error;
+mod recording;
 mod router;
 mod search;
 mod workspace;
 
 pub use error::FfiError;
+pub use recording::{
+    ExportFormat, ExportedFile, PurgeSummary, Recorder, RecordingInfo, RecordingStore,
+};
 pub use router::{decide_route, DeviceProfile, Route, Task};
 pub use search::{
     e5_search_config, ForeignEmbedder, SearchConfig, SearchEngine, SearchHit, SearchResult,
@@ -21,5 +25,7 @@ uniffi::setup_scaffolding!();
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_recording;
 #[cfg(test)]
 mod tests_workspace;

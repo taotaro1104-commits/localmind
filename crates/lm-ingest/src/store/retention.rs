@@ -37,6 +37,11 @@ pub fn is_expired(started_at_ms: u64, now_ms: u64, retention_days: u32) -> bool 
 
 impl FsChunkStore {
     /// 保持期限を過ぎた録音を削除する。`now_ms` は現在時刻（UNIX ミリ秒。呼び出し側が渡す）。
+    ///
+    /// メタ情報が読めない録音（書き込み中に止まった、壊れた、など）は、開始時刻が分からないので、録音ディレクトリの
+    /// 最終更新時刻を代わりの基準にする。その時刻から保持期間を過ぎていれば消す（保持の約束を、読めない録音にも
+    /// 及ぼす。最近まで更新されていたものは消さない）。基準の時刻も取れないものは、消さずに残して報告する。
+    /// 時計が巻き戻っている（`now_ms` が基準より前）ときは、どちらも消さない。
     pub fn purge_expired(
         &self,
         now_ms: u64,
@@ -96,11 +101,34 @@ impl FsChunkStore {
                     }
                 }
                 Ok(_) => {}
-                Err(e) => report
-                    .kept_with_reason
-                    .push(format!("{id}: メタ情報を読めないため残します: {e}")),
+                Err(e) => match self.modified_ms(&id) {
+                    Some(m) if m >= MIN_PLAUSIBLE_MS && is_expired(m, now_ms, retention_days) => {
+                        if report.deleted.len() >= MAX_DELETIONS_PER_RUN {
+                            report.kept_with_reason.push(format!(
+                                "削除数の上限（{MAX_DELETIONS_PER_RUN} 件）に達したため、残りは次回に回します"
+                            ));
+                            break;
+                        }
+                        match self.delete_recording(&id) {
+                            Ok(_) => report.deleted.push(id),
+                            Err(e) => report
+                                .kept_with_reason
+                                .push(format!("{id}: 削除できません: {e}")),
+                        }
+                    }
+                    _ => report
+                        .kept_with_reason
+                        .push(format!("{id}: メタ情報を読めないため残します: {e}")),
+                },
             }
         }
         Ok(report)
+    }
+
+    /// 録音ディレクトリの最終更新時刻（UNIX ミリ秒）。ディレクトリは、チャンクの保存・削除のたびに更新される。
+    fn modified_ms(&self, id: &str) -> Option<u64> {
+        let modified = fs::metadata(self.dir(id).ok()?).ok()?.modified().ok()?;
+        let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+        u64::try_from(since.as_millis()).ok()
     }
 }

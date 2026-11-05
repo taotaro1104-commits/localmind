@@ -1,5 +1,6 @@
 //! FFI 越しに返すエラー（メッセージのみ。内部の型は漏らさない）。
 
+use lm_ingest::IngestError;
 use lm_router::RouteError;
 use lm_search::SearchError;
 use lm_workspace::WorkspaceError;
@@ -16,6 +17,9 @@ pub enum FfiError {
     /// モデルファイルの破損・差し替え（固定したハッシュと合わない）。展開し直せば直る可能性がある。
     #[error("モデルファイルの整合性エラー: {msg}")]
     Integrity { msg: String },
+    /// 録音の保存まわりの失敗（同意が無い、id が不正、保存先に書けない、など）。
+    #[error("録音のエラー: {msg}")]
+    Ingest { msg: String },
     /// 文書の取り込み・保存・出典まわりの失敗（入力の不備を含む）。
     #[error("ワークスペースのエラー: {msg}")]
     Workspace { msg: String },
@@ -27,6 +31,12 @@ pub enum FfiError {
 impl From<RouteError> for FfiError {
     fn from(e: RouteError) -> Self {
         Self::Route { msg: e.to_string() }
+    }
+}
+
+impl From<IngestError> for FfiError {
+    fn from(e: IngestError) -> Self {
+        Self::Ingest { msg: e.to_string() }
     }
 }
 

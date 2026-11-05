@@ -58,7 +58,12 @@ class MainActivity : Activity() {
             stage("実モデル(e5)") {
                 if (ortError != null) listOf(Check("ORT_DYLIB_PATH の設定", false, ortError)) else runE5Test(appContext)
             }
-            runOnUiThread { dashboard.done { startActivity(Intent(this, SearchActivity::class.java)) } }
+            runOnUiThread {
+                dashboard.done(
+                    onOpenSearch = { startActivity(Intent(this, SearchActivity::class.java)) },
+                    onOpenRecord = { startActivity(Intent(this, RecordActivity::class.java)) },
+                )
+            }
         }
     }
 }

@@ -14,6 +14,7 @@
 pub mod audio;
 pub mod chunk;
 pub mod error;
+pub mod export;
 pub mod minutes;
 pub mod store;
 pub mod transcribe;
@@ -22,8 +23,10 @@ pub mod vad;
 
 pub use chunk::{Chunk, ChunkWriter};
 pub use error::IngestError;
+pub use export::{export_minutes, ExportFormat, ExportMeta, Exported};
 pub use minutes::{ActionItem, Minutes, MinutesExtractor, MinutesItem, RawItem, RawMinutes};
 
+pub use store::listing::RecordingSummary;
 pub use store::{
     is_expired, FsChunkStore, PurgeReport, RecordingMeta, Recovery, TmpCleanReport, MIN_TMP_AGE,
 };

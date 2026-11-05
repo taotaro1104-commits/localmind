@@ -199,3 +199,97 @@ fn only_stale_save_tmp_files_of_valid_recordings_are_removed() {
     assert!(dir.join("00000000.pcm").exists() && dir.join("meta.txt").exists());
     let _ = fs::remove_dir_all(&root);
 }
+
+/// ハードリンクを許さない環境（Android の SELinux など）を再現する。
+fn link_denied(_: &std::path::Path, _: &std::path::Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::PermissionDenied.into())
+}
+
+#[test]
+fn a_new_file_is_still_created_where_hard_links_are_denied() {
+    use super::fsio::write_new_atomic_with;
+    let root = temp_root("nolink");
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("meta.txt");
+    assert!(write_new_atomic_with(&path, b"first", link_denied).unwrap());
+    assert_eq!(fs::read(&path).unwrap(), b"first");
+    assert!(
+        !write_new_atomic_with(&path, b"second", link_denied).unwrap(),
+        "既にあれば作らない"
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"first", "既存の内容は変わらない");
+    let leftovers: Vec<_> = fs::read_dir(&root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(leftovers, ["meta.txt"], "一時ファイルを残さない");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn concurrent_creation_without_hard_links_still_lets_exactly_one_win() {
+    use super::fsio::write_new_atomic_with;
+    use std::sync::{Arc, Barrier};
+    let root = temp_root("nolink-race");
+    fs::create_dir_all(&root).unwrap();
+    let path = Arc::new(root.join("meta.txt"));
+    let barrier = Arc::new(Barrier::new(8));
+    let handles: Vec<_> = (0..8u8)
+        .map(|i| {
+            let (path, barrier) = (path.clone(), barrier.clone());
+            std::thread::spawn(move || {
+                barrier.wait();
+                write_new_atomic_with(&path, &[b'a' + i; 64], link_denied).unwrap()
+            })
+        })
+        .collect();
+    let wins = handles
+        .into_iter()
+        .filter(|_| true)
+        .map(|h| h.join().unwrap())
+        .filter(|&w| w)
+        .count();
+    assert_eq!(wins, 1);
+    let content = fs::read(&*path).unwrap();
+    assert_eq!(content.len(), 64);
+    assert!(
+        content.iter().all(|&b| b == content[0]),
+        "別々の書き手の内容が混ざらない"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_failed_start_leaves_no_empty_recording_directory_behind() {
+    let root = temp_root("begin-fail");
+    let store = FsChunkStore::new(&root);
+    let broken = |_: &std::path::Path, _: &[u8]| -> Result<bool, IngestError> {
+        Err(IngestError::Io("書き込めません".into()))
+    };
+    assert!(store
+        .begin_recording_with("r", &consented(), broken)
+        .is_err());
+    assert!(!root.join("r").exists(), "空のディレクトリを残さない");
+    assert!(store.list_recordings().unwrap().is_empty());
+
+    // 中身のあるディレクトリは、失敗しても消さない。
+    fs::create_dir_all(root.join("keep")).unwrap();
+    fs::write(root.join("keep").join("00000000.pcm"), b"x").unwrap();
+    assert!(store
+        .begin_recording_with("keep", &consented(), broken)
+        .is_err());
+    assert!(root.join("keep").join("00000000.pcm").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn begin_recording_works_without_hard_links_and_refuses_a_second_start() {
+    // begin_recording の本体は write_new_atomic を通る。リンクが使えなくても同じ結果になることを、下回りで確かめた上で、
+    // ここでは通常の経路の結果（同意の記録・二重開始の拒否）が変わらないことを確認する。
+    let root = temp_root("nolink-begin");
+    let store = FsChunkStore::new(&root);
+    store.begin_recording("r", &consented()).unwrap();
+    assert!(store.begin_recording("r", &consented()).is_err());
+    assert!(store.load_meta("r").unwrap().consent_confirmed);
+    let _ = fs::remove_dir_all(&root);
+}

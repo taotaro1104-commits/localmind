@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 録音: マイクと、録音中であることを常に示す通知 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 録音の保存期間を過ぎたものを消す定期ジョブを、再起動後も続ける -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="LocalMind Sample"
         android:theme="@android:style/Theme.DeviceDefault.Light">
         <activity
@@ -26,5 +35,17 @@
                 <data android:mimeType="text/markdown" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".RecordActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:exported="false" />
+        <service
+            android:name=".RecorderService"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
+        <service
+            android:name=".PurgeJob"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
     </application>
 </manifest>

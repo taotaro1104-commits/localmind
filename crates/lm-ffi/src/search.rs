@@ -44,6 +44,7 @@ fn to_search(e: FfiError) -> SearchError {
     | FfiError::Embedding { msg }
     | FfiError::Integrity { msg }
     | FfiError::Workspace { msg }
+    | FfiError::Ingest { msg }
     | FfiError::Callback { msg }) = e;
     SearchError::Embedding(msg)
 }

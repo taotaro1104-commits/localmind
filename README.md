@@ -20,6 +20,8 @@ llama.cpp / whisper.cpp / AICore / 実埋め込みモデルは trait で抽象�
 - `lm-ingest` — 録音の取り込み: 30秒チャンク分割・原子的な保存とクラッシュ復元・VAD・文字起こしパイプライン
   （`Transcriber` trait の裏に whisper.cpp を差し込む）・議事録の土台（仮→高精度の差分更新、話者の手動命名、
   タイムスタンプ参照から検索索引へ）
+  - 書き出し（`export`）: 議事録を Markdown・CSV・iCalendar（アクションアイテムを ToDo に）にする。本文に混ぜられた記号が、
+    出力先の構造（Markdown の見出し・リンク、CSV の数式、iCalendar の行・部品）を変えないよう、形式ごとに逃がす。
 
 ## 開発
 ```

@@ -80,7 +80,7 @@ pub fn validate_recording_id(id: &str) -> Result<(), IngestError> {
         Ok(())
     } else {
         Err(IngestError::InvalidId(format!(
-            "小文字の英数字・_・- のみ、1〜{MAX_ID_LEN} 文字、OS の予約名は不可: {id:?}"
+            "小文字の英数字・_・- のみ、1〜{MAX_ID_LEN} 文字、OS の予約名は不可"
         )))
     }
 }
@@ -369,6 +369,7 @@ impl FsChunkStore {
 mod format;
 mod fsio;
 mod lifecycle;
+pub mod listing;
 mod minutes_io;
 mod retention;
 mod scan;

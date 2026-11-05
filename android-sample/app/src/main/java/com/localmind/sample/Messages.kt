@@ -13,7 +13,7 @@ fun userMessage(e: Throwable, debuggable: Boolean, fallback: String = "うまく
     if (debuggable) Log.w("LMSample", "failure: $e", e)
     return when (e) {
         is IllegalArgumentException, is IllegalStateException -> e.message ?: fallback
-        is FfiException.Workspace -> e.message ?: fallback
+        is FfiException.Workspace, is FfiException.Ingest -> e.message ?: fallback
         is FfiException.Integrity -> "モデルのファイルが壊れています。アプリを入れ直してください"
         is SecurityException -> "このファイルを読む許可がありません"
         is java.io.IOException -> "ファイルを読み込めませんでした"

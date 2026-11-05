@@ -92,19 +92,36 @@ pub(super) fn write_atomic_with(
     Ok(())
 }
 
-/// 目的のパスが無いときだけ、内容を原子的に作る（一時ファイルに書いて fsync し、ハードリンクで置く）。
-/// 作ったら `true`、既にあれば `false`（既存の内容には触れない）。同時に呼ばれても成功するのは 1 つだけ。
-/// 読み手には、中身が書き切られたファイルしか見えない。
+/// 目的のパスが無いときだけ、内容を作る。作ったら `true`、既にあれば `false`（既存の内容には触れない）。
+/// 同時に呼ばれても成功するのは 1 つだけ。
+///
+/// 通常は、一時ファイルに書いて fsync し、ハードリンクで置く（読み手には、中身が書き切られたファイルしか
+/// 見えない）。ハードリンクを許さない環境（Android のアプリ領域は SELinux が `link` を拒否する。
+/// 対応しないファイルシステムもある）では、「無いときだけ作る」（`O_EXCL`）で直接書く。この場合は、書き終わる
+/// 前のごく短い間だけ、読み手に途中の内容が見えうる。その内容は、メタとして壊れている（読めない）扱いになり、
+/// 同意の確認がない録音と同じく保存を拒否する側に倒れる。
 pub(super) fn write_new_atomic(path: &Path, bytes: &[u8]) -> Result<bool, IngestError> {
+    write_new_atomic_with(path, bytes, |from, to| fs::hard_link(from, to))
+}
+
+/// `write_new_atomic` の本体。`link` は一時ファイルを目的のパスへ置く操作（テストで、拒否される環境を再現する）。
+pub(super) fn write_new_atomic_with(
+    path: &Path,
+    bytes: &[u8],
+    link: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> Result<bool, IngestError> {
     let (mut file, tmp) = create_tmp(path)?;
     let written = (|| -> std::io::Result<()> {
         file.write_all(bytes)?;
         file.sync_all()
     })();
     drop(file);
-    let linked = written.and_then(|()| fs::hard_link(&tmp, path));
+    let placed = written.and_then(|()| match link(&tmp, path) {
+        Err(e) if link_unsupported(&e) => create_directly(path, bytes),
+        other => other,
+    });
     let _ = fs::remove_file(&tmp);
-    match linked {
+    match placed {
         Ok(()) => {
             sync_parent(path);
             Ok(true)
@@ -112,6 +129,25 @@ pub(super) fn write_new_atomic(path: &Path, bytes: &[u8]) -> Result<bool, Ingest
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
         Err(e) => Err(e.into()),
     }
+}
+
+/// ハードリンクを使えない（許可されない・対応しない）ことを表すエラーか。
+fn link_unsupported(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported
+    )
+}
+
+/// 目的のパスへ、無いときだけ直接書く。書き込みに失敗したら、作った不完全なファイルを消す。
+fn create_directly(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = create_new(path)?; // 既にあれば AlreadyExists（既存の内容には触れない）
+    let result = file.write_all(bytes).and_then(|()| file.sync_all());
+    drop(file);
+    if result.is_err() {
+        let _ = fs::remove_file(path);
+    }
+    result
 }
 
 /// 通常のファイルだけを、`max_bytes` までの大きさで読む。シンボリックリンクや特殊ファイル（FIFO など）、
