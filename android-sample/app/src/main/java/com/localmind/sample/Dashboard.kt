@@ -11,18 +11,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-/** 配色。結果の状態（合格・実行中・失敗）を色で一目で分けるため、ほかの色は使わない。 */
-private object Palette {
-    val paper = Color.parseColor("#F2F5F4")
-    val ink = Color.parseColor("#101C26")
-    val muted = Color.parseColor("#5B6B73")
-    val line = Color.parseColor("#D3DBD9")
-    val pass = Color.parseColor("#0E7A5F")
-    val running = Color.parseColor("#9A5B00")
-    val fail = Color.parseColor("#B3261E")
-    val white = Color.WHITE
-}
-
 private enum class Overall { RUNNING, PASS, FAIL }
 
 /** `(123ms)` のような末尾の所要時間を、名前から切り離す。 */
@@ -138,10 +126,22 @@ class Dashboard(private val context: Context) {
         summary.text = message
     }
 
-    /** すべての段階が終わった。 */
-    fun done() {
+    /** すべての段階が終わった。合格していれば、検索画面へ進むボタンを出す。 */
+    fun done(onOpenSearch: () -> Unit) {
         running = false
         render()
+        if (failed == 0) {
+            val open = label(16f, Palette.pass, bold = true).apply {
+                text = "資料を検索する"
+                gravity = Gravity.CENTER
+                setPadding(px(22), px(13), px(22), px(13))
+                background = GradientDrawable().apply { setColor(Palette.white) }
+                isClickable = true
+                contentDescription = "検索画面を開く"
+                setOnClickListener { onOpenSearch() }
+            }
+            banner.addView(open, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20) })
+        }
     }
 
     /** 実行中のあいだも、目盛りと件数を更新する。 */

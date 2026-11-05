@@ -23,14 +23,14 @@ pub trait ForeignEmbedder: Send + Sync {
 
 /// Kotlin の埋め込みを `lm-search` の `Embedder` に繋ぐ。`dim` と `id` は作成時に 1 度だけ読んで
 /// 保持する（毎回呼ぶと、例外や値の変化が Rust 側のパニックや次元検査の迂回になる）。
-struct Bridge {
+pub(crate) struct Bridge {
     inner: Arc<dyn ForeignEmbedder>,
     dim: usize,
     id: String,
 }
 
 impl Bridge {
-    fn new(inner: Arc<dyn ForeignEmbedder>) -> Result<Self, FfiError> {
+    pub(crate) fn new(inner: Arc<dyn ForeignEmbedder>) -> Result<Self, FfiError> {
         let dim = inner.dim()? as usize;
         let id = inner.id()?;
         Ok(Self { inner, dim, id })
@@ -43,6 +43,7 @@ fn to_search(e: FfiError) -> SearchError {
     | FfiError::Search { msg }
     | FfiError::Embedding { msg }
     | FfiError::Integrity { msg }
+    | FfiError::Workspace { msg }
     | FfiError::Callback { msg }) = e;
     SearchError::Embedding(msg)
 }

@@ -1033,6 +1033,7 @@ version = "0.1.0"
 dependencies = [
  "lm-router",
  "lm-search",
+ "lm-workspace",
  "thiserror",
  "uniffi",
 ]
@@ -1071,6 +1072,14 @@ dependencies = [
  "sqlite-vec",
  "thiserror",
  "ureq",
+]
+
+[[package]]
+name = "lm-workspace"
+version = "0.1.0"
+dependencies = [
+ "lm-search",
+ "thiserror",
 ]
 
 [[package]]

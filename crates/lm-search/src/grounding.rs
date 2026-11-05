@@ -205,6 +205,16 @@ impl HybridSearcher {
 
     /// 上位 `k` 件を検索する。`k` は 1 以上（0 は `Config` エラー）で、`MAX_K` に丸められる。
     pub fn search(&self, query: &str, k: usize) -> Result<SearchOutcome, SearchError> {
+        Ok(self.search_with_cosine(query, k)?.0)
+    }
+
+    /// [`HybridSearcher::search`] に加えて、意味検索の上位（`score` は cosine）も返す。結果の足切りなど、
+    /// 融合前の cosine が要る呼び出し側が、同じ質問を埋め込み直さずに済む。
+    pub fn search_with_cosine(
+        &self,
+        query: &str,
+        k: usize,
+    ) -> Result<(SearchOutcome, Vec<Hit>), SearchError> {
         self.config.validate()?;
         if k == 0 {
             return Err(SearchError::Config(
@@ -224,11 +234,11 @@ impl HybridSearcher {
             Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
         );
         if !accepted {
-            return Ok(SearchOutcome::NotFound { grounding });
+            return Ok((SearchOutcome::NotFound { grounding }, semantic));
         }
-        let mut hits = fuse(&[lexical, semantic], self.config.rrf_k);
+        let mut hits = fuse(&[lexical, semantic.clone()], self.config.rrf_k);
         hits.truncate(k);
-        Ok(SearchOutcome::Found { hits, grounding })
+        Ok((SearchOutcome::Found { hits, grounding }, semantic))
     }
 }
 

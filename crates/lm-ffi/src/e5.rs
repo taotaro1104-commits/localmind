@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use crate::error::FfiError;
 use crate::search::{build_engine, check_abs_path, SearchConfig, SearchEngine};
+use crate::workspace::{open_with, WorkspaceEngine};
 use lm_search::{LinderaTokenizer, OnnxEmbedder, SqliteStore};
+use lm_workspace::E5_RELEVANCE_MARGIN;
 
 /// 実行時に読む ONNX Runtime のファイル名（AAR が `nativeLibraryDir` に置くもの）。
 const ORT_LIBRARY_NAME: &str = "libonnxruntime.so";
@@ -64,5 +66,37 @@ impl SearchEngine {
         let store =
             SqliteStore::open(path, Box::new(LinderaTokenizer::new()?), Box::new(embedder))?;
         Ok(build_engine(store, config))
+    }
+}
+
+#[uniffi::export]
+impl WorkspaceEngine {
+    /// 同梱モデル（e5）で動くワークスペースを開く。`model_dir` はモデルの展開先、`path` は索引、
+    /// `docs_dir` は文書の原本の保存先。読み込みに時間がかかるので UI スレッドから呼ばないこと
+    /// （`SearchEngine::open_e5` と同じ。同時に 2 つ開かないこと）。
+    #[uniffi::constructor]
+    pub fn open_e5(
+        path: String,
+        docs_dir: String,
+        model_dir: String,
+        config: SearchConfig,
+    ) -> Result<Arc<Self>, FfiError> {
+        check_abs_path(&model_dir, "モデルのディレクトリ")?;
+        check_abs_path(&path, "索引のパス")?;
+        check_abs_path(&docs_dir, "文書の保存先")?;
+        config.validate()?;
+        check_ort_library()?;
+        let embedder = std::panic::catch_unwind(|| OnnxEmbedder::from_bundled_dir(&model_dir))
+            .map_err(|_| FfiError::Embedding {
+            msg: "ONNX Runtime の初期化に失敗しました".into(),
+        })??;
+        // e5 で測った幅で、資料ごとの足切り（関連の薄い結果を落とす）を有効にする。
+        open_with(
+            path,
+            docs_dir,
+            config,
+            Box::new(embedder),
+            E5_RELEVANCE_MARGIN,
+        )
     }
 }

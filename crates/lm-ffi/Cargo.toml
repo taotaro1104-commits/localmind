@@ -23,5 +23,6 @@ onnx = ["lm-search/onnx"]
 [dependencies]
 lm-router = { path = "../lm-router" }
 lm-search = { path = "../lm-search", features = ["lindera", "sqlite"] }
+lm-workspace = { path = "../lm-workspace" }
 thiserror = { workspace = true }
 uniffi = { workspace = true }

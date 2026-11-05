@@ -1,13 +1,12 @@
 package com.localmind.sample
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
-import android.system.Os
 import android.util.Log
 import android.view.WindowInsetsController
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -35,14 +34,7 @@ class MainActivity : Activity() {
             return
         }
 
-        // Rust 側（ort）が実行時に読む ONNX Runtime。他のスレッドが動く前に、ここで 1 度だけ設定する
-        // （setenv はスレッドセーフではない）。AAR が nativeLibraryDir に置く。
-        val ortError = try {
-            Os.setenv("ORT_DYLIB_PATH", File(applicationInfo.nativeLibraryDir, "libonnxruntime.so").path, true)
-            null
-        } catch (e: Exception) {
-            "${e::class.simpleName}: ${e.message}"
-        }
+        val ortError = setupOrtEnv(this)
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         val appContext = applicationContext
 
@@ -66,7 +58,7 @@ class MainActivity : Activity() {
             stage("実モデル(e5)") {
                 if (ortError != null) listOf(Check("ORT_DYLIB_PATH の設定", false, ortError)) else runE5Test(appContext)
             }
-            runOnUiThread { dashboard.done() }
+            runOnUiThread { dashboard.done { startActivity(Intent(this, SearchActivity::class.java)) } }
         }
     }
 }

@@ -245,6 +245,19 @@ impl SqliteStore {
         Ok(self.len()? == 0)
     }
 
+    /// `prefix` で始まる文書 id（昇順）。空の接頭辞なら全件。孤児になった項目の掃除に使う。
+    /// 接頭辞は文字単位で比べる（`LIKE` のワイルドカードとして解釈しない）。
+    pub fn ids_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SearchError> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT id FROM docs WHERE substr(id, 1, ?1) = ?2 ORDER BY id")
+            .map_err(db)?;
+        let rows = stmt
+            .query_map(params![prefix.chars().count() as i64, prefix], |r| r.get(0))
+            .map_err(db)?;
+        rows.collect::<Result<Vec<String>, _>>().map_err(db)
+    }
+
     /// 現在の journal_mode（テスト用）。
     #[cfg(test)]
     fn journal_mode(&self) -> String {

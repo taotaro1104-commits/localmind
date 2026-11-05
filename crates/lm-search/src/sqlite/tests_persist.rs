@@ -392,3 +392,21 @@ fn the_declared_vector_dimension_is_read_exactly() {
         assert_eq!(declared_vec_dim(bad), None, "{bad}");
     }
 }
+
+#[test]
+fn ids_with_prefix_matches_literally_and_in_order() {
+    let store =
+        SqliteStore::in_memory(Box::new(NgramTokenizer), Box::new(HashingEmbedder::new(64)))
+            .unwrap();
+    for id in ["a~2", "a~1", "ab~1", "a%~1", "b~1"] {
+        store.upsert(id, "本文").unwrap();
+    }
+    assert_eq!(store.ids_with_prefix("a~").unwrap(), ["a~1", "a~2"]);
+    assert_eq!(
+        store.ids_with_prefix("a%").unwrap(),
+        ["a%~1"],
+        "% はワイルドカードではない"
+    );
+    assert_eq!(store.ids_with_prefix("").unwrap().len(), 5);
+    assert!(store.ids_with_prefix("zzz").unwrap().is_empty());
+}

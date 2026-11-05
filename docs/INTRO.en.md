@@ -12,6 +12,10 @@ write meeting minutes **without sending your data off the device**.
 
 *Self-test on an emulator (x86_64, API 35): 9 basic checks and 7 real-model (e5) checks pass.*
 
+<img src="screenshots/android-search-found.png" alt="Search results with citations that show the document, heading and line number" width="320">
+
+*Searching your documents. Each result cites the document, heading path and line number (emulator).*
+
 ## Goals
 
 - **Start with zero downloads**: It prefers AI features already on the device and falls back to a small

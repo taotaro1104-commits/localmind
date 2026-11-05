@@ -1,0 +1,18 @@
+[package]
+name = "lm-workspace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+lm-search = { path = "../lm-search", features = ["sqlite"] }
+thiserror.workspace = true
+
+[features]
+# 足切りの値を実モデルで測る example（examples/cutoff.rs）用。通常のビルドでは onnx を引き込まない。
+onnx-measure = ["lm-search/onnx"]
+
+[[example]]
+name = "cutoff"
+required-features = ["onnx-measure"]
