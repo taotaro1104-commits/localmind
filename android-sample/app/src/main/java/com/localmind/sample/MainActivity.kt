@@ -2,11 +2,11 @@ package com.localmind.sample
 
 import android.app.Activity
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.os.Bundle
 import android.system.Os
 import android.util.Log
-import android.widget.ScrollView
-import android.widget.TextView
+import android.view.WindowInsetsController
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -23,15 +23,15 @@ private val started = AtomicBoolean(false)
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val text = TextView(this).apply {
-            setPadding(32, 48, 32, 48)
-            textSize = 14f
-            setTextIsSelectable(true)
-            this.text = "実行中…（実モデルの展開と読み込みに時間がかかります）"
+        actionBar?.hide()
+        val dashboard = Dashboard(this)
+        setContentView(dashboard.view)
+        // 色付きの帯の上でも読めるよう、ステータスバーの文字は明るくする（API 30 以上）。
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
         }
-        setContentView(ScrollView(this).apply { addView(text) })
         if (!started.compareAndSet(false, true)) {
-            text.text = "自己テストは実行済みです（アプリを終了してからもう一度起動してください）。"
+            dashboard.notice("自己テストは実行済みです。アプリを終了してから、もう一度起動してください。")
             return
         }
 
@@ -47,29 +47,26 @@ class MainActivity : Activity() {
         val appContext = applicationContext
 
         thread(name = "lm-selftest") {
-            val lines = mutableListOf<String>()
             fun stage(title: String, run: () -> List<Check>) {
+                runOnUiThread { dashboard.begin(title) }
                 val results = try {
                     run()
                 } catch (e: Throwable) {
                     // ライブラリのロード失敗（.so の ABI 違いなど）もここに来る。
                     listOf(Check("実行", false, "${e::class.simpleName}: ${e.message}"))
                 }
-                results.forEach {
-                    if (debuggable) Log.i(TAG, "${if (it.ok) "PASS" else "FAIL"} ${it.name} ${it.detail}")
-                    lines += "${if (it.ok) "✔" else "✘"} ${it.name}" +
-                        if (it.detail.isNotEmpty()) "\n    ${it.detail}" else ""
+                if (debuggable) {
+                    results.forEach { Log.i(TAG, "${if (it.ok) "PASS" else "FAIL"} ${it.name} ${it.detail}") }
+                    val failed = results.count { !it.ok }
+                    Log.i(TAG, if (failed == 0) "$title: ALL PASS (${results.size})" else "$title: FAILED $failed/${results.size}")
                 }
-                val failed = results.count { !it.ok }
-                val summary = if (failed == 0) "$title: ALL PASS (${results.size})" else "$title: FAILED $failed/${results.size}"
-                if (debuggable) Log.i(TAG, summary)
-                lines += "\n$summary\n"
-                runOnUiThread { text.text = lines.joinToString("\n") }
+                runOnUiThread { dashboard.finish(title, results) }
             }
             stage("基本") { runSelfTest(appContext.filesDir) }
             stage("実モデル(e5)") {
                 if (ortError != null) listOf(Check("ORT_DYLIB_PATH の設定", false, ortError)) else runE5Test(appContext)
             }
+            runOnUiThread { dashboard.done() }
         }
     }
 }
