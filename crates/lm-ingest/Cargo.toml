@@ -1,0 +1,15 @@
+[package]
+name = "lm-ingest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+lm-search = { path = "../lm-search" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

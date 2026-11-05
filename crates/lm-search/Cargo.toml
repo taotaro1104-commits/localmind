@@ -1,0 +1,42 @@
+[package]
+name = "lm-search"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+lindera = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
+sqlite-vec = { workspace = true, optional = true }
+ureq = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+
+# ONNX Runtime の入手方法は target で分ける。
+# - 通常（Windows/Linux/macOS）: ビルド時にビルド済みバイナリを取得する。
+# - Android: ビルド済みバイナリが無いので、アプリに同梱した libonnxruntime.so を実行時に読む
+#   （環境変数 ORT_DYLIB_PATH にパスを渡す。AAR の onnxruntime-android が提供する）。
+[target.'cfg(not(target_os = "android"))'.dependencies]
+fastembed = { workspace = true, optional = true, features = ["ort-download-binaries-rustls-tls"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+fastembed = { workspace = true, optional = true, features = ["ort-load-dynamic"] }
+
+[features]
+default = []
+# 形態素解析（IPADIC 埋め込み）
+lindera = ["dep:lindera"]
+# SQLite（FTS5 + sqlite-vec）による永続索引
+sqlite = ["dep:rusqlite", "dep:sqlite-vec"]
+# ONNX 埋め込みモデル（multilingual-e5-small）。初回にモデルを取得する（ネットワークが必要）
+onnx = ["dep:fastembed", "dep:ureq", "dep:sha2"]
+
+# 実モデルが必要な example は onnx feature がなければビルド対象から外す
+[[example]]
+name = "onnx_probe"
+required-features = ["onnx"]
+
+[[example]]
+name = "onnx_sweep"
+required-features = ["onnx"]

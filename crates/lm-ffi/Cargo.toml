@@ -1,0 +1,27 @@
+[package]
+name = "lm-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+# バインディング生成ツール。端末向けのビルドに uniffi の CLI（clap など）を入れないよう feature で分ける。
+# 使い方: cargo run -p lm-ffi --features bindgen --bin uniffi-bindgen -- generate ...
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+# 同梱の e5 モデルで動く SearchEngine::open_e5 を有効にする（ONNX Runtime が要る）。
+onnx = ["lm-search/onnx"]
+
+[dependencies]
+lm-router = { path = "../lm-router" }
+lm-search = { path = "../lm-search", features = ["lindera", "sqlite"] }
+thiserror = { workspace = true }
+uniffi = { workspace = true }

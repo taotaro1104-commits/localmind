@@ -1,0 +1,31 @@
+name: ci
+on: [push, pull_request]
+# トークンの権限は読み取りだけにする。
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      # Unix 専用のテスト（シンボリックリンク・FIFO・権限）は ubuntu で実行される。
+      - run: cargo test --locked --workspace --all-features
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # 既知の脆弱性・ライセンス・取得元レジストリを検査する（deny.toml）。
+      # ort のネイティブバイナリはビルド時に取得される。ハッシュは ort-sys が検証する。
+      - uses: EmbarkStudios/cargo-deny-action@v2

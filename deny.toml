@@ -1,0 +1,48 @@
+# cargo-deny の設定。CI で `cargo deny check` を実行する。
+# optional な依存（fastembed・ureq・rusqlite・lindera など）も検査対象にする。
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+# メンテナンス終了の通知は、直接の依存だけを対象にする（推移依存の proc-macro まで止めない）。
+unmaintained = "workspace"
+
+[licenses]
+# 依存が使うライセンスのうち、許可するもの。新しい依存で失敗したら内容を確認して追加する。
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
+    "BSL-1.0",
+]
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# TLS は rustls に統一している。OpenSSL 系が（推移依存でも）戻ってきたら失敗させる
+# （Android で OpenSSL が要る構成に逆戻りするのを防ぐ）。
+deny = [
+    { name = "openssl" },
+    { name = "openssl-sys" },
+    { name = "native-tls" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
