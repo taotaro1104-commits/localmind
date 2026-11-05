@@ -1,0 +1,116 @@
+package com.localmind.sample
+
+import java.io.File
+import uniffi.lm_ffi.DeviceProfile
+import uniffi.lm_ffi.FfiException
+import uniffi.lm_ffi.ForeignEmbedder
+import uniffi.lm_ffi.Route
+import uniffi.lm_ffi.SearchConfig
+import uniffi.lm_ffi.SearchEngine
+import uniffi.lm_ffi.Task
+import uniffi.lm_ffi.decideRoute
+import uniffi.lm_ffi.e5SearchConfig
+
+/** 1 項目の結果。 */
+data class Check(val name: String, val ok: Boolean, val detail: String = "")
+
+/** Kotlin 側の埋め込み（実モデルの代わり）。文字のハッシュから 8 次元のベクトルを作る。 */
+private class ToyEmbedder(private val failDim: Boolean = false) : ForeignEmbedder {
+    override fun embedDocument(text: String): List<Float> = vec(text)
+    override fun embedQuery(text: String): List<Float> = vec(text)
+    override fun dim(): UInt = if (failDim) throw IllegalStateException("dim failed") else 8u
+    override fun id(): String = "toy-embedder-v1"
+
+    private fun vec(text: String): List<Float> {
+        val v = FloatArray(8)
+        text.forEach { v[it.code % 8] += 1f }
+        return v.toList()
+    }
+}
+
+private inline fun check(name: String, block: () -> String?): Check =
+    try {
+        val failure = block()
+        Check(name, failure == null, failure ?: "")
+    } catch (e: Throwable) {
+        Check(name, false, "${e::class.simpleName}: ${e.message}")
+    }
+
+/** Rust コア（liblm_ffi.so）を端から端まで呼ぶ自己テスト。`dir` はアプリ専用領域。 */
+fun runSelfTest(dir: File): List<Check> {
+    val results = mutableListOf<Check>()
+    fun profile(nano: Boolean, gguf: Boolean) =
+        DeviceProfile(ramMb = 8192u, nanoAvailable = nano, pcReachable = false, ggufInstalled = gguf)
+
+    results += check("経路: Nano があれば短文は Nano") {
+        decideRoute(Task.SHORT_TEXT, profile(true, true)).takeIf { it != Route.NANO }?.let { "got $it" }
+    }
+    results += check("経路: Nano が無ければ GGUF へ縮退") {
+        decideRoute(Task.SHORT_TEXT, profile(false, true)).takeIf { it != Route.GGUF }?.let { "got $it" }
+    }
+    results += check("経路: GGUF が無ければ Kotlin 例外（FfiException.Route）") {
+        try {
+            decideRoute(Task.DOCUMENT_RAG, profile(false, false))
+            "例外が出なかった"
+        } catch (e: FfiException.Route) {
+            null
+        }
+    }
+
+    val lexical = File(dir, "lexical.db").also { it.delete() }
+    results += check("検索: 登録して引ける・無関係な質問は見つかりません") {
+        SearchEngine.openLexical(lexical.absolutePath).use { e ->
+            e.upsert("a", "契約書の解除は第12条に定める")
+            e.upsert("b", "議事録の保存期間は30日")
+            val hit = e.search("第12条", 3u)
+            val none = e.search("宇宙旅行の費用", 3u)
+            when {
+                e.len() != 2uL -> "len=${e.len()}"
+                !hit.found || hit.hits.firstOrNull()?.id != "a" -> "hit=$hit"
+                none.found -> "none=$none"
+                else -> null
+            }
+        }
+    }
+    results += check("検索: 再オープンしても索引が残る（永続化）") {
+        SearchEngine.openLexical(lexical.absolutePath).use { e ->
+            if (e.len() != 2uL) "len=${e.len()}" else null
+        }
+    }
+
+    results += check("埋め込み注入: Kotlin 実装でも登録・検索できる") {
+        val db = File(dir, "toy.db").also { it.delete() }
+        SearchEngine.open(db.absolutePath, ToyEmbedder(), e5SearchConfig()).use { e ->
+            e.upsert("a", "予算案を承認した")
+            e.search("予算案", 3u)
+            if (e.isEmpty()) "登録されていない" else null
+        }
+    }
+    results += check("埋め込み注入: dim() の例外は FfiException になる（クラッシュしない）") {
+        val db = File(dir, "toy2.db").also { it.delete() }
+        try {
+            SearchEngine.open(db.absolutePath, ToyEmbedder(failDim = true), e5SearchConfig()).close()
+            "例外が出なかった"
+        } catch (e: FfiException) {
+            null
+        }
+    }
+    results += check("入力検証: 相対パスは拒否") {
+        try {
+            SearchEngine.openLexical("relative.db").close()
+            "拒否されなかった"
+        } catch (e: FfiException.Search) {
+            null
+        }
+    }
+    results += check("入力検証: 不正な設定（NaN）は open で拒否") {
+        val db = File(dir, "cfg.db").also { it.delete() }
+        try {
+            SearchEngine.open(db.absolutePath, ToyEmbedder(), SearchConfig(Float.NaN, 0f)).close()
+            "拒否されなかった"
+        } catch (e: FfiException.Search) {
+            null
+        }
+    }
+    return results
+}
