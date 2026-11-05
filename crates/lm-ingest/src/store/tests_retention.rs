@@ -217,14 +217,19 @@ fn a_failed_delete_leaves_the_meta_so_the_recording_can_be_purged_later() {
 #[test]
 fn a_symlinked_recording_directory_is_never_followed_or_deleted() {
     let root = temp_root("purge-link");
-    let target = root.join("elsewhere");
+    // リンクの先は録音のルートの外に置く（ルートの中に録音の名前の実ディレクトリがあると、それ自体が
+    // 保持期間による削除の対象になり、リンクを辿らないことの確認と混ざる）。
+    let target = temp_root("purge-link-target");
+    fs::create_dir_all(&root).unwrap();
     fs::create_dir_all(&target).unwrap();
     fs::write(target.join("keep.txt"), b"x").unwrap();
     std::os::unix::fs::symlink(&target, root.join("linked")).unwrap();
     let r = FsChunkStore::new(&root)
         .purge_expired(BASE + 1000 * DAY, 1)
         .unwrap();
-    assert!(r.deleted.is_empty());
-    assert!(target.join("keep.txt").exists());
+    assert!(r.deleted.is_empty(), "{r:?}");
+    assert!(target.join("keep.txt").exists(), "リンクの先は消えない");
+    assert!(root.join("linked").exists(), "リンク自体も触らない");
     let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&target);
 }
