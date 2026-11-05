@@ -42,6 +42,7 @@ fn to_search(e: FfiError) -> SearchError {
     let (FfiError::Route { msg }
     | FfiError::Search { msg }
     | FfiError::Embedding { msg }
+    | FfiError::Integrity { msg }
     | FfiError::Callback { msg }) = e;
     SearchError::Embedding(msg)
 }

@@ -1,0 +1,16 @@
+# 依存と actions の更新を、週 1 回の PR で提案する（自動マージはしない）。
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gradle
+    directory: /android-sample
+    schedule:
+      interval: weekly

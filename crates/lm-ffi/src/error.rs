@@ -12,6 +12,9 @@ pub enum FfiError {
     /// 埋め込みモデルの失敗（Kotlin 側の例外を含む）。索引の失敗（`Search`）と区別できる。
     #[error("埋め込みモデルのエラー: {msg}")]
     Embedding { msg: String },
+    /// モデルファイルの破損・差し替え（固定したハッシュと合わない）。展開し直せば直る可能性がある。
+    #[error("モデルファイルの整合性エラー: {msg}")]
+    Integrity { msg: String },
     /// Kotlin 側のコールバックが例外を投げた。
     #[error("コールバックの例外: {msg}")]
     Callback { msg: String },
@@ -27,6 +30,7 @@ impl From<SearchError> for FfiError {
     fn from(e: SearchError) -> Self {
         match e {
             SearchError::Embedding(msg) => Self::Embedding { msg },
+            SearchError::Integrity(msg) => Self::Integrity { msg },
             other => Self::Search {
                 msg: other.to_string(),
             },

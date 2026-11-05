@@ -17,6 +17,9 @@ pub enum IngestError {
     /// 議事録を抽出する LLM の失敗、または入力が不正。
     #[error("議事録の抽出に失敗しました: {0}")]
     Extract(String),
+    /// 録音の同意が確認されていない。
+    #[error("録音の同意が確認されていません: {0}")]
+    Consent(String),
     /// 文字起こしエンジンの失敗。
     #[error("文字起こしに失敗しました: {0}")]
     Transcribe(String),

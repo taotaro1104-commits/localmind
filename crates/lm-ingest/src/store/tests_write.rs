@@ -1,6 +1,6 @@
 //! 書き込みの原子性と同時実行のテスト。
 
-use super::tests::{chunk, temp_root};
+use super::tests::{chunk, save, temp_root};
 use super::*;
 
 // ---- 書き込みの原子性と同時実行 --------------------------------------------------------
@@ -16,7 +16,7 @@ fn readers_never_see_a_partially_written_chunk() {
     let store = Arc::new(FsChunkStore::new(&root));
     let mut big = chunk(0, 120_000);
     big.sample_rate = 16_000;
-    store.save_chunk("r", &big).unwrap();
+    save(&store, "r", &big).unwrap();
 
     let done = Arc::new(AtomicBool::new(false));
     let reader = {
@@ -38,7 +38,7 @@ fn readers_never_see_a_partially_written_chunk() {
     for round in 0..40 {
         let mut next = big.clone();
         next.samples[0] = round as i16;
-        store.save_chunk("r", &next).unwrap();
+        save(&store, "r", &next).unwrap();
     }
     done.store(true, Ordering::Relaxed);
     let (corrupt_seen, ok_reads) = reader.join().unwrap();
@@ -73,7 +73,7 @@ fn concurrent_writes_to_one_chunk_leave_a_valid_file_and_no_temp_files() {
 
     let root = temp_root("concurrent");
     let store = Arc::new(FsChunkStore::new(&root));
-    store.save_chunk("r", &chunk(0, 200)).unwrap();
+    save(&store, "r", &chunk(0, 200)).unwrap();
     let handles: Vec<_> = (0..6)
         .map(|t| {
             let store = Arc::clone(&store);
@@ -81,7 +81,7 @@ fn concurrent_writes_to_one_chunk_leave_a_valid_file_and_no_temp_files() {
                 for round in 0..30 {
                     let mut c = chunk(0, 200);
                     c.samples[0] = (t * 100 + round) as i16;
-                    let _ = store.save_chunk("r", &c);
+                    let _ = save(&store, "r", &c);
                 }
             })
         })

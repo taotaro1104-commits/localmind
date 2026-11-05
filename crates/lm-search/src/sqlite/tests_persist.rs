@@ -335,3 +335,60 @@ fn a_database_failing_quick_check_is_reported_as_corrupted() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---- 索引ファイルの整合・防御 ---------------------------------------------------------
+
+#[test]
+fn a_vector_table_with_a_different_dimension_is_refused_at_open() {
+    let path = temp_db("vecdim");
+    drop(open(&path).unwrap()); // 次元 64 で作成
+    {
+        // meta は 64 のまま、ベクトル表だけ別の次元で作り直す（細工された索引ファイル）。
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "DROP TABLE docs_vec;
+             CREATE VIRTUAL TABLE docs_vec USING vec0(embedding float[4] distance_metric=cosine);",
+        )
+        .unwrap();
+    }
+    let err = open(&path).err().expect("次元の不一致は拒否される");
+    assert!(err.to_string().contains("ベクトル表の次元"), "{err}");
+    cleanup(&path);
+}
+
+#[test]
+fn shadow_tables_cannot_be_written_from_sql() {
+    // 防御モードにより、仮想表の裏側の表を SQL から直接書き換えられない。
+    let s = SqliteStore::in_memory(ngram(), hashing(64)).unwrap();
+    let conn = s.lock();
+    let err = conn
+        .execute(
+            "INSERT INTO docs_fts_data(id, block) VALUES (999999, x'00')",
+            [],
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("may not be modified"), "{err}");
+    // 通常の登録・検索は影響を受けない。
+    drop(conn);
+    s.upsert("a", "防御モードでも動く").unwrap();
+    assert_eq!(lex(&s, "防御", 3)[0].id, "a");
+}
+
+#[test]
+fn the_declared_vector_dimension_is_read_exactly() {
+    use super::setup::declared_vec_dim;
+    let ok = "CREATE VIRTUAL TABLE docs_vec USING vec0(\n    embedding float[384] distance_metric=cosine)";
+    assert_eq!(declared_vec_dim(ok), Some(384));
+    assert_eq!(declared_vec_dim(&ok.replace("384", "38")), Some(38));
+    // コメント・別の列・複数の宣言・欠落は読み取れない（= 不一致として拒否される）。
+    for bad in [
+        "CREATE VIRTUAL TABLE docs_vec USING vec0(x float[3], embedding float[384])",
+        "CREATE VIRTUAL TABLE docs_vec USING vec0(/*float[384]*/ embedding float[4])",
+        "CREATE VIRTUAL TABLE docs_vec USING vec0(embedding float[])",
+        "CREATE VIRTUAL TABLE docs_vec USING vec0(embedding float[a4])",
+        "CREATE VIRTUAL TABLE docs_vec USING vec0(embedding int8[384])",
+        "",
+    ] {
+        assert_eq!(declared_vec_dim(bad), None, "{bad}");
+    }
+}

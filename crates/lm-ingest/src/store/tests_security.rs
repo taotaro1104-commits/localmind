@@ -2,7 +2,7 @@
 
 use super::fsio::create_new;
 use super::scan::scan_dir_limited;
-use super::tests::{chunk, path_of, temp_root};
+use super::tests::{chunk, path_of, save, temp_root};
 use super::*;
 
 // ---- ヘッダの完全性（版 3 の CRC はヘッダも守る）--------------------------------------------
@@ -99,7 +99,7 @@ fn recovery_stops_at_the_memory_limit_and_reports_the_rest() {
     let root = temp_root("restore-cap");
     let store = FsChunkStore::new(&root);
     for i in 0..4 {
-        store.save_chunk("r", &chunk(i, 100)).unwrap(); // 1 チャンク = 200 バイト
+        save(&store, "r", &chunk(i, 100)).unwrap(); // 1 チャンク = 200 バイト
     }
     let r = store.load_chunks_limited("r", 450, usize::MAX).unwrap();
     assert_eq!(r.chunks.len(), 2, "{:?}", r.skipped);
@@ -132,7 +132,7 @@ fn files_are_found_in_index_order_even_if_the_directory_lists_them_unsorted() {
     let root = temp_root("scan-order");
     let store = FsChunkStore::new(&root);
     for i in [3u32, 0, 2, 1] {
-        store.save_chunk("r", &chunk(i, 10)).unwrap();
+        save(&store, "r", &chunk(i, 10)).unwrap();
     }
     let scan = scan_dir(&root.join("r")).unwrap();
     let indices: Vec<u32> = scan.found.iter().map(|(i, _)| *i).collect();
@@ -154,7 +154,7 @@ fn a_symlinked_recording_directory_is_refused_for_writes_and_reads() {
     fs::create_dir_all(&target).unwrap();
     std::os::unix::fs::symlink(&target, root.join("r")).unwrap();
     let store = FsChunkStore::new(&root);
-    assert!(store.save_chunk("r", &chunk(0, 10)).is_err());
+    assert!(save(&store, "r", &chunk(0, 10)).is_err());
     assert!(store.load_chunks("r").is_err());
     assert_eq!(
         fs::read_dir(&target).unwrap().count(),
@@ -169,7 +169,7 @@ fn a_symlinked_recording_directory_is_refused_for_writes_and_reads() {
 fn skipped_reports_escape_unusual_characters_in_file_names() {
     let root = temp_root("escape-report");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 10)).unwrap();
+    save(&store, "r", &chunk(0, 10)).unwrap();
     // U+202E（右から左への上書き）は、多くの OS でファイル名に使え、表示を偽装できる。
     fs::write(root.join("r").join("evil\u{202e}gnp.tmp"), b"x").unwrap();
     let r = store.load_chunks("r").unwrap();
@@ -185,7 +185,7 @@ fn recovery_stops_at_the_chunk_count_limit() {
     let root = temp_root("chunk-cap");
     let store = FsChunkStore::new(&root);
     for i in 0..5 {
-        store.save_chunk("r", &chunk(i, 0)).unwrap(); // 空のチャンクはバイト数の上限に掛からない
+        save(&store, "r", &chunk(i, 0)).unwrap(); // 空のチャンクはバイト数の上限に掛からない
     }
     let r = store.load_chunks_limited("r", u64::MAX, 3).unwrap();
     assert_eq!(r.chunks.len(), 3);
@@ -198,7 +198,7 @@ fn recovery_stops_at_the_chunk_count_limit() {
 fn the_skipped_report_is_capped() {
     let root = temp_root("skip-cap");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 10)).unwrap();
+    save(&store, "r", &chunk(0, 10)).unwrap();
     for i in 0..(MAX_SKIPPED_REPORTS + 50) {
         fs::write(root.join("r").join(format!("junk{i}.tmp")), b"").unwrap();
     }
@@ -243,7 +243,7 @@ fn meta_through_a_symlink_or_a_symlinked_directory_is_refused() {
 fn scanning_stops_at_the_entry_limit_and_keeps_what_was_found() {
     let root = temp_root("scan-cap");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 10)).unwrap();
+    save(&store, "r", &chunk(0, 10)).unwrap();
     for i in 0..10 {
         fs::write(root.join("r").join(format!("other{i}.txt")), b"").unwrap();
     }
@@ -268,7 +268,7 @@ fn scanning_stops_at_the_entry_limit_and_keeps_what_was_found() {
 fn unrelated_entries_never_stop_the_scan() {
     let root = temp_root("scan-unrelated");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 10)).unwrap();
+    save(&store, "r", &chunk(0, 10)).unwrap();
     fs::create_dir_all(root.join("r").join("subdir")).unwrap();
     let r = store.load_chunks("r").unwrap();
     assert_eq!(r.chunks.len(), 1);

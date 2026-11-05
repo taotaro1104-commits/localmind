@@ -339,3 +339,24 @@ mod e5 {
         assert!(!none.found, "{none:?}");
     }
 }
+
+#[test]
+fn search_errors_map_to_distinct_ffi_errors() {
+    use lm_search::SearchError;
+    assert!(matches!(
+        FfiError::from(SearchError::Embedding("net".into())),
+        FfiError::Embedding { .. }
+    ));
+    assert!(matches!(
+        FfiError::from(SearchError::Integrity("hash".into())),
+        FfiError::Integrity { .. }
+    ));
+    assert!(matches!(
+        FfiError::from(SearchError::Config("c".into())),
+        FfiError::Search { .. }
+    ));
+    assert!(matches!(
+        FfiError::from(SearchError::Storage("s".into())),
+        FfiError::Search { .. }
+    ));
+}

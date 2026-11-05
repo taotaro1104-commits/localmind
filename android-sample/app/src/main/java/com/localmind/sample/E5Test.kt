@@ -98,8 +98,9 @@ fun runE5Test(context: Context): List<Check> {
     run("実モデルを読み込む（SHA-256 検証 + 初期化）") {
         engine = try {
             SearchEngine.openE5(db.absolutePath, modelDir.absolutePath, e5SearchConfig())
-        } catch (e: FfiException.Embedding) {
-            // 展開済みのファイルが壊れている（長さは同じで中身が違う等）なら、作り直して 1 度だけやり直す。
+        } catch (e: FfiException.Integrity) {
+            // 展開済みのファイルが壊れている（長さは同じで中身が違う等。ハッシュが固定値と合わない）なら、
+            // 作り直して 1 度だけやり直す。ネットワークなどの別の失敗（Embedding）では作り直さない。
             SearchEngine.openE5(
                 db.absolutePath,
                 installModel(context, force = true).absolutePath,

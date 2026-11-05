@@ -4,6 +4,9 @@
 use crate::audio::{samples_to_ms, validate_sample_rate, DEFAULT_CHUNK_SECONDS, MAX_CHUNK_SECONDS};
 use crate::error::IngestError;
 
+/// `ChunkWriter::push` に 1 度に渡せる音声の長さ（秒）。
+pub const MAX_PUSH_SECONDS: u64 = 600;
+
 /// 録音の 1 区間（モノラル PCM 16bit）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chunk {
@@ -73,7 +76,15 @@ impl ChunkWriter {
     }
 
     /// PCM を追加し、満たされたチャンクを返す（0 個以上）。
-    pub fn push(&mut self, pcm: &[i16]) -> Vec<Chunk> {
+    /// 1 回の入力は `MAX_PUSH_SECONDS` 秒分まで（巨大な入力でメモリを使い切らないように。超えたら分けて渡す）。
+    pub fn push(&mut self, pcm: &[i16]) -> Result<Vec<Chunk>, IngestError> {
+        let limit = u64::from(self.sample_rate) * MAX_PUSH_SECONDS;
+        if pcm.len() as u64 > limit {
+            return Err(IngestError::InvalidFormat(format!(
+                "1 回に渡せる音声は {MAX_PUSH_SECONDS} 秒分までです: {} サンプル",
+                pcm.len()
+            )));
+        }
         self.buffer.extend_from_slice(pcm);
         // 先頭から必要な分だけ取り出し、端数は最後に 1 回だけ詰め直す（巨大な入力でも二乗にならない）。
         let n = self.chunk_samples;
@@ -83,7 +94,7 @@ impl ChunkWriter {
         for samples in parts {
             full.push(self.emit(samples));
         }
-        full
+        Ok(full)
     }
 
     /// 録音停止。バッファに残った端数を最後のチャンクとして返す。
@@ -112,8 +123,8 @@ mod tests {
     #[test]
     fn standard_chunks_are_thirty_seconds() {
         let mut w = ChunkWriter::standard(1000).unwrap();
-        assert!(w.push(&pcm(29_999)).is_empty());
-        let chunks = w.push(&pcm(1));
+        assert!(w.push(&pcm(29_999)).unwrap().is_empty());
+        let chunks = w.push(&pcm(1)).unwrap();
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].duration_ms(), 30_000);
         assert!(ChunkWriter::standard(0).is_err());
@@ -141,9 +152,9 @@ mod tests {
     #[test]
     fn emits_a_chunk_each_time_the_buffer_fills() {
         let mut w = ChunkWriter::new(1000, 2).unwrap(); // 2 秒 = 2000 サンプル
-        assert!(w.push(&pcm(1500)).is_empty());
+        assert!(w.push(&pcm(1500)).unwrap().is_empty());
         assert_eq!(w.buffered_ms(), 1500);
-        let chunks = w.push(&pcm(2600)); // 合計 4100 → 2 チャンク + 100 サンプル
+        let chunks = w.push(&pcm(2600)).unwrap(); // 合計 4100 → 2 チャンク + 100 サンプル
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].index, 0);
         assert_eq!(chunks[0].start_ms, 0);
@@ -159,7 +170,7 @@ mod tests {
         let mut w = ChunkWriter::new(1000, 1).unwrap();
         let mut out = Vec::new();
         for piece in input.chunks(333) {
-            for c in w.push(piece) {
+            for c in w.push(piece).unwrap() {
                 out.extend(c.samples);
             }
         }
@@ -172,7 +183,7 @@ mod tests {
     #[test]
     fn finish_returns_the_partial_tail_with_correct_position() {
         let mut w = ChunkWriter::new(1000, 2).unwrap();
-        w.push(&pcm(2500));
+        w.push(&pcm(2500)).unwrap();
         let tail = w.finish().unwrap();
         assert_eq!(tail.index, 1);
         assert_eq!(tail.start_ms, 2000);
@@ -185,7 +196,7 @@ mod tests {
     fn finish_on_an_empty_or_exact_recording_returns_none() {
         assert!(ChunkWriter::new(1000, 2).unwrap().finish().is_none());
         let mut w = ChunkWriter::new(1000, 2).unwrap();
-        assert_eq!(w.push(&pcm(2000)).len(), 1);
+        assert_eq!(w.push(&pcm(2000)).unwrap().len(), 1);
         assert!(w.finish().is_none());
     }
 
@@ -193,16 +204,29 @@ mod tests {
     fn start_positions_do_not_drift_with_odd_sample_rates() {
         // 44.1kHz で 1 秒チャンクを 1000 個作っても、開始位置は常に index × 1000ms。
         let mut w = ChunkWriter::new(44_100, 1).unwrap();
-        let chunks = w.push(&vec![0i16; 44_100 * 50]);
+        let chunks = w.push(&vec![0i16; 44_100 * 50]).unwrap();
         for (i, c) in chunks.iter().enumerate() {
             assert_eq!(c.start_ms, i as u64 * 1000);
         }
     }
 
     #[test]
+    fn an_oversized_push_is_refused_and_leaves_the_writer_untouched() {
+        let mut w = ChunkWriter::new(1000, 1).unwrap();
+        let too_big = vec![0i16; (1000 * MAX_PUSH_SECONDS) as usize + 1];
+        assert!(matches!(
+            w.push(&too_big),
+            Err(IngestError::InvalidFormat(_))
+        ));
+        assert_eq!(w.buffered_ms(), 0, "何も取り込まれていない");
+        let just_fits = vec![0i16; (1000 * MAX_PUSH_SECONDS) as usize];
+        assert_eq!(w.push(&just_fits).unwrap().len(), MAX_PUSH_SECONDS as usize);
+    }
+
+    #[test]
     fn empty_push_is_a_no_op() {
         let mut w = ChunkWriter::new(1000, 1).unwrap();
-        assert!(w.push(&[]).is_empty());
+        assert!(w.push(&[]).unwrap().is_empty());
         assert_eq!(w.buffered_ms(), 0);
     }
 }

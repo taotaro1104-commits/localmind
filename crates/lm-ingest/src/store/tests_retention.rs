@@ -1,7 +1,7 @@
 //! 自動削除期限のテスト。
 
 use super::retention::{is_expired, MAX_DELETIONS_PER_RUN, MIN_PLAUSIBLE_MS};
-use super::tests::{chunk, temp_root};
+use super::tests::{chunk, save, temp_root};
 use super::*;
 
 const DAY: u64 = 24 * 60 * 60 * 1000;
@@ -9,7 +9,7 @@ const DAY: u64 = 24 * 60 * 60 * 1000;
 const BASE: u64 = 1_800_000_000_000;
 
 fn record(store: &FsChunkStore, id: &str, started_at_ms: u64) {
-    store.save_chunk(id, &chunk(0, 10)).unwrap();
+    save(store, id, &chunk(0, 10)).unwrap();
     store
         .save_meta(
             id,
@@ -109,7 +109,13 @@ fn deletions_per_run_are_capped_and_the_rest_wait_for_next_time() {
 fn recordings_without_readable_meta_are_kept_and_reported() {
     let root = temp_root("purge-nometa");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("nometa", &chunk(0, 10)).unwrap(); // メタなし
+    // メタなしの録音（チャンクだけがある）を直接作る。
+    fs::create_dir_all(root.join("nometa")).unwrap();
+    fs::write(
+        root.join("nometa").join(chunk_file_name(0)),
+        encode(&chunk(0, 10)),
+    )
+    .unwrap();
     let r = store.purge_expired(BASE + 1000 * DAY, 1).unwrap();
     assert!(r.deleted.is_empty());
     assert_eq!(r.kept_with_reason.len(), 1, "{:?}", r.kept_with_reason);

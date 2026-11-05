@@ -3,29 +3,39 @@ on: [push, pull_request]
 # トークンの権限は読み取りだけにする。
 permissions:
   contents: read
+# 同じ ref の実行が重なったら、古いものを待たせる／取り消す。
+concurrency:
+  group: ci-${{ github.ref }}
+  # main 以外の古い実行は取り消す（main では、途中のコミットの結果も残す）。
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+# actions は、更新されても中身が変わらないようコミット SHA で固定する（更新は Dependabot が提案する）。
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # ubuntu は移行予定の `latest` ではなくバージョンを固定する。
+        os: [ubuntu-24.04, windows-2025]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master（2026-10-16）
         with:
+          toolchain: stable
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       # Unix 専用のテスト（シンボリックリンク・FIFO・権限）は ubuntu で実行される。
       - run: cargo test --locked --workspace --all-features
   supply-chain:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # 既知の脆弱性・ライセンス・取得元レジストリを検査する（deny.toml）。
       # ort のネイティブバイナリはビルド時に取得される。ハッシュは ort-sys が検証する。
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1

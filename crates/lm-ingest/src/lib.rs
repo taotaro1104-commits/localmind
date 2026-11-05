@@ -24,7 +24,9 @@ pub use chunk::{Chunk, ChunkWriter};
 pub use error::IngestError;
 pub use minutes::{ActionItem, Minutes, MinutesExtractor, MinutesItem, RawItem, RawMinutes};
 
-pub use store::{is_expired, FsChunkStore, PurgeReport, RecordingMeta, Recovery};
+pub use store::{
+    is_expired, FsChunkStore, PurgeReport, RecordingMeta, Recovery, TmpCleanReport, MIN_TMP_AGE,
+};
 pub use transcribe::{Stage, Transcriber, TranscriptSegment, Utterance};
 pub use transcript::{RefineDiff, Transcript};
 pub use vad::{EnergyVad, SpeechSpan, VadConfig};

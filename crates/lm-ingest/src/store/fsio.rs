@@ -92,6 +92,28 @@ pub(super) fn write_atomic_with(
     Ok(())
 }
 
+/// 目的のパスが無いときだけ、内容を原子的に作る（一時ファイルに書いて fsync し、ハードリンクで置く）。
+/// 作ったら `true`、既にあれば `false`（既存の内容には触れない）。同時に呼ばれても成功するのは 1 つだけ。
+/// 読み手には、中身が書き切られたファイルしか見えない。
+pub(super) fn write_new_atomic(path: &Path, bytes: &[u8]) -> Result<bool, IngestError> {
+    let (mut file, tmp) = create_tmp(path)?;
+    let written = (|| -> std::io::Result<()> {
+        file.write_all(bytes)?;
+        file.sync_all()
+    })();
+    drop(file);
+    let linked = written.and_then(|()| fs::hard_link(&tmp, path));
+    let _ = fs::remove_file(&tmp);
+    match linked {
+        Ok(()) => {
+            sync_parent(path);
+            Ok(true)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// 通常のファイルだけを、`max_bytes` までの大きさで読む。シンボリックリンクや特殊ファイル（FIFO など）、
 /// 上限を超えるファイルは `Corrupt`。開く前にリンクを調べ、開いたハンドルでも種類とサイズを確認し、
 /// 読み込みも上限で打ち切る（調べてから開くまでの差し替えがあっても、確保量は上限で抑える）。

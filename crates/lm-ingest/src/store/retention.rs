@@ -52,6 +52,7 @@ impl FsChunkStore {
                 "現在時刻が不正です（ミリ秒の UNIX 時刻を渡してください）".into(),
             ));
         }
+        self.check_root()?;
         let mut report = PurgeReport::default();
         let entries = match fs::read_dir(&self.root) {
             Ok(entries) => entries,

@@ -73,6 +73,11 @@ fn embedding_error(message: String) -> SearchError {
     SearchError::Embedding(message)
 }
 
+/// ハッシュ・サイズの不一致（破損・差し替え）。ネットワーク失敗とは別の種類として返す。
+fn integrity_error(message: String) -> SearchError {
+    SearchError::Integrity(message)
+}
+
 /// 保存先でのこのファイルのパス（リビジョンごとのディレクトリ。パスの区切りは `__` にする）。
 fn cache_path(cache_dir: &Path, file: &PinnedFile) -> PathBuf {
     cache_dir
@@ -88,10 +93,17 @@ pub(crate) fn bundled_path(dir: &Path, file: &PinnedFile) -> PathBuf {
 /// `max_bytes` までを読み、SHA-256 が固定値と一致する場合だけ内容を返す。
 pub(crate) fn read_verified(path: &Path, file: &PinnedFile) -> Result<Vec<u8>, SearchError> {
     // 開く前にリンクそのものを調べる（リンクや FIFO は開かない。FIFO を開くと書き手を待って止まる）。
-    let meta = fs::symlink_metadata(path)
-        .map_err(|e| embedding_error(format!("{} を調べられません: {e}", file.path)))?;
+    // ファイルが無いのは、展開・取得し直せば直るので `Integrity`（その他の入出力エラーは `Embedding`）。
+    let meta = fs::symlink_metadata(path).map_err(|e| {
+        let message = format!("{} を調べられません: {e}", file.path);
+        if e.kind() == std::io::ErrorKind::NotFound {
+            integrity_error(message)
+        } else {
+            embedding_error(message)
+        }
+    })?;
     if !meta.is_file() || meta.len() > file.max_bytes {
-        return Err(embedding_error(format!(
+        return Err(integrity_error(format!(
             "{} が通常のファイルでない、または大きすぎます",
             file.path
         )));
@@ -118,7 +130,8 @@ fn read_capped<R: Read>(
         .read_to_end(&mut bytes)
         .map_err(|e| embedding_error(format!("{} を読めません: {e}", file.path)))?;
     if bytes.len() as u64 > file.max_bytes {
-        return Err(embedding_error(format!(
+        // 読んでいる間に大きくなった（差し替え）、または取得先が上限を超えて送ってきた。固定したサイズと合わない。
+        return Err(integrity_error(format!(
             "{} が上限（{} バイト）を超えています",
             file.path, file.max_bytes
         )));
@@ -129,7 +142,7 @@ fn read_capped<R: Read>(
 /// 内容の SHA-256 が固定値と一致するか調べる。
 pub(crate) fn verify_bytes(bytes: &[u8], file: &PinnedFile) -> Result<(), SearchError> {
     if bytes.len() as u64 > file.max_bytes {
-        return Err(embedding_error(format!(
+        return Err(integrity_error(format!(
             "{} が上限（{} バイト）を超えています",
             file.path, file.max_bytes
         )));
@@ -138,7 +151,7 @@ pub(crate) fn verify_bytes(bytes: &[u8], file: &PinnedFile) -> Result<(), Search
     if actual == file.sha256 {
         Ok(())
     } else {
-        Err(embedding_error(format!(
+        Err(integrity_error(format!(
             "{} のハッシュが固定値と一致しません（取得元の差し替え、または破損）: {actual}",
             file.path
         )))

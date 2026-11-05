@@ -69,7 +69,7 @@ fn record_crash_recover_transcribe_index_and_cite() {
     let root = temp_root("full");
     let store = FsChunkStore::new(&root);
     store
-        .save_meta(
+        .begin_recording(
             "meeting1",
             &RecordingMeta {
                 consent_confirmed: true,
@@ -84,7 +84,7 @@ fn record_crash_recover_transcribe_index_and_cite() {
     let mut writer = ChunkWriter::new(RATE, CHUNK_SECONDS).unwrap();
     let mut saved = 0;
     for piece in audio.chunks(1234) {
-        for chunk in writer.push(piece) {
+        for chunk in writer.push(piece).unwrap() {
             store.save_chunk("meeting1", &chunk).unwrap();
             saved += 1;
         }
@@ -141,7 +141,7 @@ fn record_crash_recover_transcribe_index_and_cite() {
 fn refinement_updates_only_what_changed_and_keeps_speaker_names() {
     let audio = meeting_audio();
     let mut writer = ChunkWriter::new(RATE, CHUNK_SECONDS).unwrap();
-    let chunks = writer.push(&audio);
+    let chunks = writer.push(&audio).unwrap();
     let vad = EnergyVad::new(VadConfig::default()).unwrap();
 
     let draft_engine = Script(Mutex::new(VecDeque::from([

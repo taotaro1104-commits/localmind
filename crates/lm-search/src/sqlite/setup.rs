@@ -3,7 +3,8 @@
 use std::time::{Duration, Instant};
 
 use rusqlite::{
-    params, Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior,
+    config::DbConfig, params, Connection, ErrorCode, OptionalExtension, Transaction,
+    TransactionBehavior,
 };
 
 use super::db;
@@ -127,8 +128,46 @@ fn create_schema(
         "CREATE VIRTUAL TABLE IF NOT EXISTS docs_vec USING vec0(
              embedding float[{dim}] distance_metric=cosine);"
     ))?;
+    check_vec_dim(&tx, dim)?;
     tx.commit()?;
     Ok(())
+}
+
+/// 既存の `docs_vec` の列の次元が、meta の次元（= 埋め込みモデルの次元）と一致するか確かめる。
+/// meta だけ書き換えられた、または別の方法で作られた索引だと、`CREATE ... IF NOT EXISTS` は
+/// 何もせず通ってしまい、あとで挿入や検索が謎のエラーになる。
+fn check_vec_dim(tx: &Transaction<'_>, dim: usize) -> Result<(), SetupError> {
+    let sql: Option<String> = tx
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='docs_vec'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if sql.as_deref().and_then(declared_vec_dim) == Some(dim) {
+        Ok(())
+    } else {
+        Err(SearchError::Config(format!(
+            "ベクトル表の次元が埋め込みモデル（{dim} 次元）と一致しません（再索引が必要）"
+        ))
+        .into())
+    }
+}
+
+/// `docs_vec` の定義 SQL から、`embedding` 列の宣言次元を取り出す（`embedding float[384] ...` の `384`）。
+/// 定義にちょうど 1 つだけ現れる `float[N]` を、列名 `embedding` の直後にあるものとして読む。
+/// コメントや別の列に同じ文字列があっても通さない。
+pub(super) fn declared_vec_dim(sql: &str) -> Option<usize> {
+    let compact: String = sql.split_whitespace().collect::<String>().to_lowercase();
+    if compact.matches("float[").count() != 1 {
+        return None;
+    }
+    let rest = compact.split_once("embeddingfloat[")?.1;
+    let (digits, _) = rest.split_once(']')?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
 }
 
 /// 接続設定とスキーマ作成。別接続との競合で BUSY になりうる（特に新規ファイルの WAL 切替）。
@@ -143,6 +182,9 @@ fn setup(
     conn.busy_timeout(busy_timeout)?;
     // 索引ファイルが差し替えられても、スキーマ内の関数・ビューを信頼しない。
     conn.pragma_update(None, "trusted_schema", "OFF")?;
+    // 防御モード: SQL から仮想表の裏側の表（shadow table）や `writable_schema` を書き換えられなくする。
+    // 壊れた索引ファイルや細工された索引ファイルを経由して、内部表を直接壊されるのを防ぐ。
+    conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
     if persistent {
         enable_wal(conn)?;
     }

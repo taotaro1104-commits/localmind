@@ -1,6 +1,6 @@
 //! チャンクファイルのデコード検証・メタ情報・削除のテスト。
 
-use super::tests::{chunk, path_of, temp_root};
+use super::tests::{chunk, path_of, save, temp_root};
 use super::*;
 use crate::audio::MAX_SAMPLE_RATE;
 
@@ -96,7 +96,7 @@ fn a_flipped_bit_in_the_audio_is_detected_by_the_checksum() {
     // 保存先のファイルでも、復元時に壊れたチャンクとして扱われる。
     let root = temp_root("bitrot");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 50)).unwrap();
+    save(&store, "r", &chunk(0, 50)).unwrap();
     let p = path_of(&root, "r", 0);
     let mut bytes = fs::read(&p).unwrap();
     let mid = HEADER_LEN + 10;
@@ -189,7 +189,7 @@ fn meta_sample_rate_is_validated_on_save_and_on_load() {
 fn delete_removes_the_whole_recording() {
     let root = temp_root("delete");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 10)).unwrap();
+    save(&store, "r", &chunk(0, 10)).unwrap();
     store
         .save_meta(
             "r",

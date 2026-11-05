@@ -29,8 +29,8 @@ const RESERVED_NAMES: [&str; 4] = ["con", "prn", "aux", "nul"];
 pub const MAX_CHUNK_INDEX: u32 = 99_999_999;
 /// `meta.txt` の最大サイズ（数行の設定なので小さくてよい）。
 const MAX_META_BYTES: u64 = 4096;
-/// 1 回の復元でメモリに載せる PCM の上限（バイト）。約 9 時間分（16kHz）。超えた分は未使用として報告する。
-pub const MAX_RESTORE_BYTES: u64 = 1 << 30;
+/// 1 回の復元でメモリに載せる PCM の上限（バイト）。約 4.6 時間分（16kHz・モノラル）。復元時のメモリのピークを抑えるため、これ以上の録音は分けて復元する。超えた分は未使用として報告する。
+pub const MAX_RESTORE_BYTES: u64 = 1 << 29;
 /// 1 回の復元で読むチャンク数の上限（30 秒チャンクで約 69 日分）。空のチャンクを大量に置かれても無制限に増えない。
 pub const MAX_RESTORE_CHUNKS: usize = 200_000;
 /// ディレクトリ走査で見るエントリ数の上限。超えたら破損として扱う。
@@ -194,13 +194,30 @@ impl FsChunkStore {
 
     pub(super) fn dir(&self, id: &str) -> Result<PathBuf, IngestError> {
         validate_recording_id(id)?;
+        self.check_root()?;
         Ok(self.root.join(id))
+    }
+
+    /// 録音ルート自体がシンボリックリンクなら拒否する（リンク先に録音を書いたり、消したりしないため）。
+    /// ルートが無いのは許す（最初の保存で作られる）。上位のディレクトリがリンクなのは許す
+    /// （Android の `/data/user/0` など、正規のパスにもリンクが含まれる）。
+    pub(super) fn check_root(&self) -> Result<(), IngestError> {
+        match fs::symlink_metadata(&self.root) {
+            Ok(m) if m.file_type().is_symlink() => {
+                Err(IngestError::Io("録音ルートがシンボリックリンクです".into()))
+            }
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// チャンクを保存する（同じ連番は上書き）。再読込できないチャンクは保存せずエラーにする。
     pub fn save_chunk(&self, id: &str, chunk: &Chunk) -> Result<(), IngestError> {
         validate_chunk(chunk)?;
         let dir = self.dir(id)?;
+        // 同意が確認された録音（`begin_recording` 済み）にだけ保存する。
+        self.require_consent(&dir)?;
         ensure_real_dir(&dir)?;
         write_atomic(&dir.join(chunk_file_name(chunk.index)), &encode(chunk))
     }
@@ -299,7 +316,10 @@ impl FsChunkStore {
         Ok(recovery)
     }
 
-    pub fn save_meta(&self, id: &str, meta: &RecordingMeta) -> Result<(), IngestError> {
+    /// テスト用: 録音のメタを書く（上書き）。製品コードには公開しない: 開始時刻の書き換えや、同意の「確認済み」への書き換えを
+    /// 外から行えないようにする（開始は `begin_recording`、撤回は `revoke_consent`）。
+    #[cfg(test)]
+    fn save_meta(&self, id: &str, meta: &RecordingMeta) -> Result<(), IngestError> {
         validate_sample_rate(meta.sample_rate)?;
         let dir = self.dir(id)?;
         ensure_real_dir(&dir)?;
@@ -348,6 +368,7 @@ impl FsChunkStore {
 
 mod format;
 mod fsio;
+mod lifecycle;
 mod minutes_io;
 mod retention;
 mod scan;
@@ -355,6 +376,8 @@ mod scan;
 mod tests;
 #[cfg(test)]
 mod tests_format;
+#[cfg(test)]
+mod tests_lifecycle;
 #[cfg(test)]
 mod tests_minutes;
 #[cfg(test)]
@@ -370,5 +393,6 @@ use format::{crc32, HEADER_LEN};
 use fsio::{ensure_real_dir, read_regular_limited, real_dir_exists, write_atomic};
 #[cfg(test)]
 use fsio::{tmp_path, write_atomic_with};
+pub use lifecycle::{TmpCleanReport, MIN_TMP_AGE};
 pub use retention::{is_expired, PurgeReport};
 use scan::{note_skipped, scan_dir, Scan};

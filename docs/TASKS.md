@@ -35,7 +35,7 @@ ID 規則: `<機能記号>-<連番>`。全タスク共通の受け入れ条件: 
 ## v1.5
 ### A オフライン議事録（依存: P0-6, ingest）
 - [~] A-1 Foreground Service（microphone）、30秒チャンク逐次保存、クラッシュ復元（`lm-ingest`: チャンク分割・原子的保存・復元は完了。Foreground Service は Kotlin 側で未着手）
-- [~] A-2 録音開始時の同意確認（設定で OFF 可）、録音中の常時通知、自動削除期限（`lm-ingest`: 同意確認フラグの保存・録音の削除・期限切れの一括削除 `purge_expired`（保持日数 0 拒否、メタが読めない録音は残す）は完了。確認 UI・通知・定期実行は未着手）
+- [~] A-2 録音開始時の同意確認（設定で OFF 可）、録音中の常時通知、自動削除期限（`lm-ingest`: 同意確認フラグの保存・録音の削除・期限切れの一括削除 `purge_expired`（保持日数 0 拒否、メタが読めない録音は残す）は完了。`begin_recording` は同意なしを拒否し（メタを原子的に新規作成。開始時刻は上書きできない）、`save_chunk` は同意が確認された録音（`begin_recording` 済み）にだけ保存する。`save_meta` は非公開で、同意の撤回は `revoke_consent`。録音ルートがリンクなら拒否。古い一時ファイルの掃除 `clean_stale_tmp`（60 秒未満は指定不可）。削除は現在時刻の妥当性検査と 1 回 100 件の上限つき。確認 UI・通知・定期実行は未着手）
 - [x] A-3 VAD（無音除去）（`lm-ingest::vad`: エネルギー VAD、ノイズフロアの自動調整）
 - [~] A-4 whisper.cpp 2段構成（録音中は小型モデル、充電中に大型で再処理し差分更新）（`lm-ingest`: `Transcriber` trait・Draft/Refined・差分更新は完了。whisper.cpp 本体の統合は未着手）
 - [~] A-5 話者A/B を後から手動命名する UI（`lm-ingest::Transcript::rename_speaker` は完了。UI は未着手）

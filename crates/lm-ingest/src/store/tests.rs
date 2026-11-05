@@ -17,6 +17,23 @@ pub(super) fn chunk(index: u32, n: usize) -> Chunk {
     }
 }
 
+/// テスト用の「同意済み」メタ。
+pub(super) fn consented() -> RecordingMeta {
+    RecordingMeta {
+        consent_confirmed: true,
+        sample_rate: 1000,
+        started_at_ms: 1_800_000_000_000,
+    }
+}
+
+/// テスト用: 録音が未登録なら `begin_recording`（同意済み）してから、チャンクを保存する。
+pub(super) fn save(store: &FsChunkStore, id: &str, chunk: &Chunk) -> Result<(), IngestError> {
+    if !store.dir(id)?.join("meta.txt").exists() {
+        store.begin_recording(id, &consented())?;
+    }
+    store.save_chunk(id, chunk)
+}
+
 pub(super) fn path_of(root: &Path, id: &str, index: u32) -> PathBuf {
     root.join(id).join(chunk_file_name(index))
 }
@@ -29,7 +46,7 @@ fn chunks_round_trip_exactly() {
     let store = FsChunkStore::new(&root);
     let chunks = [chunk(0, 1000), chunk(1, 1000), chunk(2, 345)];
     for c in &chunks {
-        store.save_chunk("rec1", c).unwrap();
+        save(&store, "rec1", c).unwrap();
     }
     let r = store.load_chunks("rec1").unwrap();
     assert_eq!(r.chunks, chunks);
@@ -41,9 +58,9 @@ fn chunks_round_trip_exactly() {
 fn saving_the_same_index_overwrites() {
     let root = temp_root("overwrite");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 10)).unwrap();
+    save(&store, "r", &chunk(0, 10)).unwrap();
     let newer = chunk(0, 20);
-    store.save_chunk("r", &newer).unwrap();
+    save(&store, "r", &newer).unwrap();
     assert_eq!(store.load_chunks("r").unwrap().chunks, vec![newer]);
     let _ = fs::remove_dir_all(&root);
 }
@@ -61,7 +78,7 @@ fn a_truncated_last_chunk_is_dropped_but_earlier_ones_survive() {
     let root = temp_root("truncated");
     let store = FsChunkStore::new(&root);
     for i in 0..3 {
-        store.save_chunk("r", &chunk(i, 500)).unwrap();
+        save(&store, "r", &chunk(i, 500)).unwrap();
     }
     let p = path_of(&root, "r", 2);
     let bytes = fs::read(&p).unwrap();
@@ -80,7 +97,7 @@ fn a_gap_stops_recovery_and_later_chunks_are_reported_not_used() {
     let root = temp_root("gap");
     let store = FsChunkStore::new(&root);
     for i in 0..4 {
-        store.save_chunk("r", &chunk(i, 100)).unwrap();
+        save(&store, "r", &chunk(i, 100)).unwrap();
     }
     fs::remove_file(path_of(&root, "r", 1)).unwrap();
     let r = store.load_chunks("r").unwrap();
@@ -95,7 +112,7 @@ fn a_corrupt_middle_chunk_stops_recovery_there() {
     let root = temp_root("corrupt-mid");
     let store = FsChunkStore::new(&root);
     for i in 0..3 {
-        store.save_chunk("r", &chunk(i, 100)).unwrap();
+        save(&store, "r", &chunk(i, 100)).unwrap();
     }
     fs::write(path_of(&root, "r", 1), b"garbage").unwrap();
     let r = store.load_chunks("r").unwrap();
@@ -113,7 +130,7 @@ fn a_corrupt_middle_chunk_stops_recovery_there() {
 fn leftover_temp_files_are_ignored_and_reported() {
     let root = temp_root("tmp");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 100)).unwrap();
+    save(&store, "r", &chunk(0, 100)).unwrap();
     // 書き込み中にクラッシュした 2 つ目のチャンク。
     fs::write(root.join("r").join("00000001.pcm.123-0.tmp"), b"partial").unwrap();
     let r = store.load_chunks("r").unwrap();
@@ -130,7 +147,7 @@ fn leftover_temp_files_are_ignored_and_reported() {
 fn unrelated_files_in_the_directory_are_ignored() {
     let root = temp_root("unrelated");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 100)).unwrap();
+    save(&store, "r", &chunk(0, 100)).unwrap();
     fs::write(root.join("r").join("notes.txt"), b"x").unwrap();
     fs::write(root.join("r").join("0.pcm"), b"x").unwrap(); // 8 桁でない
     fs::write(root.join("r").join("abcdefgh.pcm"), b"x").unwrap();
@@ -144,8 +161,8 @@ fn unrelated_files_in_the_directory_are_ignored() {
 fn a_chunk_file_renamed_to_another_index_is_rejected() {
     let root = temp_root("renamed");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 100)).unwrap();
-    store.save_chunk("r", &chunk(1, 100)).unwrap();
+    save(&store, "r", &chunk(0, 100)).unwrap();
+    save(&store, "r", &chunk(1, 100)).unwrap();
     fs::copy(path_of(&root, "r", 1), path_of(&root, "r", 0)).unwrap();
     let r = store.load_chunks("r").unwrap();
     assert!(r.chunks.is_empty());
@@ -161,7 +178,7 @@ fn a_chunk_file_renamed_to_another_index_is_rejected() {
 fn a_directory_named_like_a_chunk_is_not_read() {
     let root = temp_root("dir-as-chunk");
     let store = FsChunkStore::new(&root);
-    store.save_chunk("r", &chunk(0, 100)).unwrap();
+    save(&store, "r", &chunk(0, 100)).unwrap();
     fs::create_dir_all(path_of(&root, "r", 1)).unwrap();
     let r = store.load_chunks("r").unwrap();
     assert_eq!(r.chunks.len(), 1);
@@ -226,7 +243,7 @@ fn recording_ids_that_could_escape_the_directory_are_rejected() {
     ] {
         assert!(
             matches!(
-                store.save_chunk(bad, &chunk(0, 1)),
+                save(&store, bad, &chunk(0, 1)),
                 Err(IngestError::InvalidId(_))
             ),
             "{bad:?}"
@@ -275,7 +292,7 @@ fn invalid_ids_never_touch_the_filesystem() {
     let base = temp_root("noop");
     let root = base.join("root");
     let store = FsChunkStore::new(&root);
-    let _ = store.save_chunk("../escape", &chunk(0, 1));
+    let _ = save(&store, "../escape", &chunk(0, 1));
     assert!(!root.exists());
     assert!(!base.join("escape").exists());
     assert!(!base.exists(), "何も作られていないはず");
@@ -318,12 +335,12 @@ fn anything_that_passes_validation_round_trips() {
     let store = FsChunkStore::new(&root);
     let mut at_limit = chunk(0, 1);
     at_limit.start_ms = MAX_START_MS;
-    store.save_chunk("r", &at_limit).unwrap();
+    save(&store, "r", &at_limit).unwrap();
     let mut max_len = chunk(1, 0);
     max_len.sample_rate = 1;
     max_len.start_ms = 0;
     max_len.samples = vec![5; MAX_CHUNK_SECONDS as usize];
-    store.save_chunk("r", &max_len).unwrap();
+    save(&store, "r", &max_len).unwrap();
     let r = store.load_chunks("r").unwrap();
     assert_eq!(r.chunks, vec![at_limit, max_len]);
     let _ = fs::remove_dir_all(&root);

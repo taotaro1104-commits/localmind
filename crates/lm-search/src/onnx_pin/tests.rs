@@ -36,6 +36,29 @@ fn matching_content_is_accepted_and_tampered_content_is_not() {
 }
 
 #[test]
+fn integrity_failures_are_distinct_from_other_failures() {
+    // ハッシュの不一致・サイズ超過・通常のファイルでないものは Integrity（展開し直せば直りうる）。
+    assert!(matches!(
+        verify_bytes(b"x", &pin(EMPTY_SHA256, 10)),
+        Err(SearchError::Integrity(_))
+    ));
+    assert!(matches!(
+        verify_bytes(b"\0", &pin(ZERO_BYTE_SHA256, 0)),
+        Err(SearchError::Integrity(_))
+    ));
+    let dir = temp("integrity");
+    assert!(matches!(
+        read_verified(&dir, &pin(EMPTY_SHA256, 10)),
+        Err(SearchError::Integrity(_))
+    ));
+    // ファイルが無いのも Integrity（展開し直せば直る）。ネットワーク失敗は Embedding のまま。
+    assert!(matches!(
+        read_verified(&dir.join("missing"), &pin(EMPTY_SHA256, 10)),
+        Err(SearchError::Integrity(_))
+    ));
+}
+
+#[test]
 fn oversized_content_is_rejected_even_if_the_hash_matches() {
     assert!(verify_bytes(b"\0", &pin(ZERO_BYTE_SHA256, 1)).is_ok());
     assert!(verify_bytes(b"\0", &pin(ZERO_BYTE_SHA256, 0)).is_err());
@@ -137,6 +160,30 @@ fn plain_http_is_refused() {
         &pin(EMPTY_SHA256, 10),
     )
     .unwrap_err();
+    assert!(err.to_string().contains("取得できません"), "{err}");
+    drop(_guard);
+    let _ = server.join();
+}
+
+/// TLS として話せない相手（https の URL なのに平文を返す、すぐ切る）への接続は失敗し、
+/// 取得失敗（Embedding）として返る。ネットワーク失敗は Integrity ではない。
+#[test]
+fn a_server_that_does_not_speak_tls_fails_as_a_download_error() {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        if let Ok((mut s, _)) = listener.accept() {
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        }
+    });
+    let _guard = TcpStreamGuard(port);
+    let err = download_from(
+        &format!("https://127.0.0.1:{port}/x"),
+        &pin(EMPTY_SHA256, 10),
+    )
+    .unwrap_err();
+    assert!(matches!(err, SearchError::Embedding(_)), "{err:?}");
     assert!(err.to_string().contains("取得できません"), "{err}");
     drop(_guard);
     let _ = server.join();
