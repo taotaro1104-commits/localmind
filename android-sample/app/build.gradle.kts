@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -24,16 +23,15 @@ android {
     androidResources { noCompress += listOf("onnx", "json") }
 
     // Rust 側の成果物（dist/android）を直接参照する。コピーしない。
-    sourceSets["main"].jniLibs.srcDirs("../../dist/android/jniLibs")
-    sourceSets["main"].java.srcDirs("../../dist/android/kotlin")
+    sourceSets["main"].jniLibs.directories.add("../../dist/android/jniLibs")
+    sourceSets["main"].kotlin.directories.add("../../dist/android/kotlin")
     // 同梱モデル: dist/android/assets/e5-small/（取得方法は ../README.md）
-    sourceSets["main"].assets.srcDirs("../../dist/android/assets")
+    sourceSets["main"].assets.directories.add("../../dist/android/assets")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 }
 
 dependencies {
