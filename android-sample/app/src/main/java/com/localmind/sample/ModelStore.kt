@@ -70,7 +70,15 @@ object ModelStore {
         val tmp = File(d, "$ACTIVE.tmp")
         try {
             tmp.writeText("${file.name}|$sha256")
-            check(tmp.renameTo(File(d, ACTIVE))) { "モデルの記録を保存できません" }
+            try {
+                // 既にある記録を置き換える（rename は、OS によっては既存のファイルがあると失敗する）
+                java.nio.file.Files.move(
+                    tmp.toPath(), File(d, ACTIVE).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: java.io.IOException) {
+                throw IllegalStateException("モデルの記録を保存できません")
+            }
         } finally {
             tmp.delete() // 成功したあとは、もう無い。失敗したときの取り残しを消す
         }

@@ -56,6 +56,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     // UniFFI の Kotlin バインディングは JNA を使う（Android は @aar 形式が必要）。
     implementation("net.java.dev.jna:jna:5.19.1@aar")
     // ONNX Runtime の本体（libonnxruntime.so）だけを使う。Java API は呼ばない（推論は Rust 側）。

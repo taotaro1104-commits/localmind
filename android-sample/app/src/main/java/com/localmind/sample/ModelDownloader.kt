@@ -57,14 +57,19 @@ object ModelDownloader {
     // 候補の取得で使われるホストだけ（本体と、ファイルの配信先）。
     private val HOSTS = listOf("huggingface.co", "cdn.hf.co", "xethub.hf.co")
 
+    private const val CANCELLED = "中止しました（取りかけは残します）"
     private val running = AtomicBoolean(false)
     /** 実行中の取得の中止フラグ（取得ごとに作る。前の取得への中止が、次の取得に持ち越されない）。 */
     @Volatile private var stopFlag: AtomicBoolean? = null
 
     val isRunning: Boolean get() = running.get()
 
+    /** 通信中の接続。中止のときに閉じて、待っている読み書きをすぐ止める。 */
+    @Volatile private var activeConn: HttpURLConnection? = null
+
     fun cancel() {
         stopFlag?.set(true)
+        activeConn?.disconnect()
     }
 
     internal fun isAllowedHost(host: String?): Boolean {
@@ -131,6 +136,7 @@ object ModelDownloader {
             return true
         } finally {
             stopFlag = null
+            activeConn = null
             running.set(false)
         }
     }
@@ -145,8 +151,9 @@ object ModelDownloader {
             }
             val c = url.openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
-            c.connectTimeout = 15_000
-            c.readTimeout = 30_000
+            c.connectTimeout = 10_000
+            c.readTimeout = 20_000
+            activeConn = c
             c.setRequestProperty("Accept-Encoding", "identity")
             c.setRequestProperty("User-Agent", "LocalMind")
             if (start > 0) c.setRequestProperty("Range", "bytes=$start-")
@@ -164,16 +171,23 @@ object ModelDownloader {
     }
 
     /** 全体のサイズ（バイト）を、応答から求める。分からない・範囲外なら失敗にする。 */
-    private fun totalBytes(conn: HttpURLConnection, code: Int, start: Long, source: ModelSource): Long {
+    private fun totalBytes(conn: HttpURLConnection, code: Int, start: Long, source: ModelSource): Long =
+        parseTotal(code, conn.getHeaderField("Content-Range"), conn.contentLengthLong, start, source.expectedBytes)
+
+    /**
+     * 応答から全体のバイト数を求める（不正・範囲外・想定と違うときは -1）。206 は `Content-Range: bytes 開始-…/全体` が
+     * 要求した開始位置と合っていること。200 は `Content-Length`。
+     */
+    internal fun parseTotal(code: Int, contentRange: String?, contentLength: Long, start: Long, expectedBytes: Long?): Long {
         val total = if (code == 206) {
-            val range = conn.getHeaderField("Content-Range").orEmpty()
+            val range = contentRange.orEmpty()
             if (!range.startsWith("bytes $start-")) return -1L
             range.substringAfterLast('/').toLongOrNull() ?: -1L
         } else {
-            conn.contentLengthLong
+            contentLength
         }
         if (total !in MIN_BYTES..MAX_BYTES) return -1L
-        if (source.expectedBytes != null && total != source.expectedBytes) return -1L
+        if (expectedBytes != null && total != expectedBytes) return -1L
         return total
     }
 
@@ -184,10 +198,12 @@ object ModelDownloader {
         val conn = try { open(source, start) } catch (e: ModelDownloadException) { throw e } catch (_: javax.net.ssl.SSLException) {
             throw ModelDownloadException("安全な接続を確立できませんでした（回線や証明書に問題があるかもしれません）")
         } catch (_: IOException) {
-            throw ModelDownloadException("ネットワークに接続できません")
+            throw ModelDownloadException(if (stop.get()) CANCELLED else "ネットワークに接続できません")
         }
         try {
-            val code = conn.responseCode
+            val code = try { conn.responseCode } catch (_: IOException) {
+                throw ModelDownloadException(if (stop.get()) CANCELLED else "ネットワークに接続できません")
+            }
             if (code == 416) {
                 // すべて取得済み（検証の途中で中止したあと）なら、そのまま検証へ進む。SHA-256 が分からなければ破棄する。
                 if (source.expectedSha256 != null && start > 0) return start
@@ -210,9 +226,9 @@ object ModelDownloader {
                     var done = start
                     onProgress(done, total)
                     while (true) {
-                        if (stop.get()) throw ModelDownloadException("中止しました（取りかけは残します）")
+                        if (stop.get()) throw ModelDownloadException(CANCELLED)
                         val n = try { input.read(buf) } catch (_: IOException) {
-                            throw ModelDownloadException("通信が途切れました。もう一度押すと続きから再開します")
+                            throw ModelDownloadException(if (stop.get()) CANCELLED else "通信が途切れました。もう一度押すと続きから再開します")
                         }
                         if (n < 0) break
                         done += n
@@ -243,7 +259,7 @@ object ModelDownloader {
         file.inputStream().use { input ->
             val buf = ByteArray(1024 * 1024)
             while (true) {
-                if (stop.get()) throw ModelDownloadException("中止しました（取りかけは残します）")
+                if (stop.get()) throw ModelDownloadException(CANCELLED)
                 val n = input.read(buf)
                 if (n < 0) break
                 md.update(buf, 0, n)

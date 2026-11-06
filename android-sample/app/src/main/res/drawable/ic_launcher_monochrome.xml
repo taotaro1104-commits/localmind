@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- テーマアイコン用の単色版（色は無視され、濃さだけが使われる）。棒の高さで波形を表す。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M34,44h8v20h-8z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M50,34h8v40h-8z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M66,41h8v26h-8z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M50,80h8v6h-8z" />
+</vector>

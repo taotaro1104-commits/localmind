@@ -71,3 +71,9 @@ SHA-256 を記録して使う（取得元を信頼できる場合だけ）。取
 署名つきの release は、環境変数 `LM_KEYSTORE` / `LM_KEYSTORE_PASSWORD` / `LM_KEY_ALIAS` / `LM_KEY_PASSWORD` を
 設定して `./gradlew :app:assembleRelease`。鍵はリポジトリに入れない（失うと、同じアプリとして更新を配れなくなる）。
 埋め込みモデル（e5）を含むので約 700MB になる（Google Play の上限は超える。直接配布向け）。
+
+## テスト
+
+- 端末での自己テスト（起動時に実行。デバッグビルドで logcat に結果）。
+- JVM の単体テスト: `./gradlew :app:testDebugUnitTest`（モデル取得の接続先・サイズ・再開の判定と、モデルの記録）。
+  JUnit は、依存検証（`gradle/verification-metadata.xml`）に、ハッシュを追加して使っている。
