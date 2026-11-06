@@ -2,6 +2,8 @@
 
 [English](INTRO.en.md)
 
+**ソースコード**: [GitHub（taotaro1104-commits/localmind）](https://github.com/taotaro1104-commits/localmind) ／ **ダウンロード**: [Google ドライブ（Android 用 APK）](https://drive.google.com/drive/folders/1hfZGFiTYGIdArpSbNyXrt-hWH11323Wv?usp=drive_link)
+
 LocalMind は、Android 端末の中だけで動く AI アシスタントです。会議の録音から議事録をつくり、手元の資料を探し、
 AI に質問することを、**録音も資料も端末の外へ出さずに**行います。
 
@@ -17,6 +19,23 @@ AI に質問することを、**録音も資料も端末の外へ出さずに**�
 </p>
 
 *左から、資料の検索（根拠つき）、資料のグループ分け、議事録（根拠の発話の時刻つき）、AI への質問（エミュレータ）。*
+
+<p>
+  <img src="screenshots/android-search-scoped.png" alt="グループ「サンプル」に絞った検索。検索の範囲と、根拠つきの結果が出る" width="200">
+  <img src="screenshots/android-docs-url.png" alt="資料のグループの一括削除と、URL から追加するフォーム" width="200">
+  <img src="screenshots/android-ask-confirm.png" alt="Wikipedia へ検索語を送る前の確認ダイアログ" width="200">
+  <img src="screenshots/android-model-switch.png" alt="AI モデルの切り替え画面" width="200">
+</p>
+
+*左から、グループに絞った検索、URL から資料を追加するフォーム、検索語を送る前の確認、AI モデルの切り替え。*
+
+## 入手方法
+
+- **APK（Android 用）**: [Google ドライブ]({DRIVE}) で配布しています（`LocalMind-0.1.apk`、約 700MB）。
+  自分で作った鍵で署名しているので、端末で「提供元不明のアプリ」の許可が必要です。Wi-Fi でのダウンロードをおすすめします。
+  AI モデルは APK に入っていないので、初めて使うときに別にダウンロードします。
+  SHA-256（v0.1）: `{SHA}`
+- **ソースコード**: [GitHub]({REPO})。ビルドの手順は [android-sample/README.md](../android-sample/README.md) にあります。
 
 ## できること
 

@@ -2,6 +2,8 @@
 
 [日本語](INTRO.ja.md)
 
+**Source code**: [GitHub (taotaro1104-commits/localmind)](https://github.com/taotaro1104-commits/localmind) / **Download**: [Google Drive (Android APK)](https://drive.google.com/drive/folders/1hfZGFiTYGIdArpSbNyXrt-hWH11323Wv?usp=drive_link)
+
 LocalMind is an AI assistant that runs only on an Android device. It turns meeting recordings into minutes,
 searches your own documents and answers your questions with AI, **without sending your recordings or documents
 off the device**.
@@ -20,6 +22,23 @@ off the device**.
 
 *From the left: document search with sources, document groups, minutes with the time of the cited speech,
 and asking the AI (emulator, Japanese screens).*
+
+<p>
+  <img src="screenshots/android-search-scoped.png" alt="A search limited to the group Sample, with the search range and the results with sources" width="200">
+  <img src="screenshots/android-docs-url.png" alt="Deleting a whole group, and the form to add a document from a URL" width="200">
+  <img src="screenshots/android-ask-confirm.png" alt="The confirmation dialog shown before search words are sent to Wikipedia" width="200">
+  <img src="screenshots/android-model-switch.png" alt="Switching the AI model" width="200">
+</p>
+
+*From the left: a search limited to a group, adding a document from a URL, the confirmation before search words are sent, and switching the AI model (emulator, Japanese screens).*
+
+## Get it
+
+- **APK (Android)**: shared on [Google Drive](https://drive.google.com/drive/folders/1hfZGFiTYGIdArpSbNyXrt-hWH11323Wv?usp=drive_link) (`LocalMind-0.1.apk`, about 700 MB). It is signed with a key we
+  generated ourselves, so your device will ask you to allow apps from unknown sources. Downloading over Wi-Fi is recommended.
+  The AI models are not inside the APK; you download one separately the first time you use it.
+  SHA-256 (v0.1): `078f7c82afc78e46455492537aa14018be75717d00c0895ee2696f5b1c668224`
+- **Source code**: [GitHub](https://github.com/taotaro1104-commits/localmind). The build steps are in [android-sample/README.md](../android-sample/README.md) (written in Japanese).
 
 ## What it does
 
