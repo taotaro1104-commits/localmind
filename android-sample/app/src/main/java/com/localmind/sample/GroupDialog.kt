@@ -15,35 +15,35 @@ internal const val MAX_GROUP_CHARS = 40
 internal fun pickGroup(context: Context, current: String, existing: List<String>, onChosen: (String) -> Unit) {
     val choices = existing.filter { it != current }
     val labels = choices.toMutableList()
-    if (current.isNotEmpty()) labels += "未分類にする"
-    labels += "新しいグループ…"
+    if (current.isNotEmpty()) labels += t("未分類にする", "Make ungrouped")
+    labels += t("新しいグループ…", "New group…")
     AlertDialog.Builder(context)
-        .setTitle("グループを選ぶ" + if (current.isEmpty()) "" else "（いま: $current）")
+        .setTitle(t("グループを選ぶ", "Choose a group") + if (current.isEmpty()) "" else t("（いま: $current）", "(now: $current)"))
         .setItems(labels.toTypedArray()) { _, which ->
             when {
                 which < choices.size -> onChosen(choices[which])
-                labels[which] == "未分類にする" -> onChosen("")
+                labels[which] == t("未分類にする", "Make ungrouped") -> onChosen("")
                 else -> askNewGroup(context, onChosen)
             }
         }
-        .setNegativeButton("キャンセル", null)
+        .setNegativeButton(t("キャンセル", "Cancel"), null)
         .show()
 }
 
 private fun askNewGroup(context: Context, onChosen: (String) -> Unit) {
     val input = EditText(context).apply {
-        hint = "グループ名（${MAX_GROUP_CHARS} 文字まで）"
+        hint = t("グループ名（${MAX_GROUP_CHARS} 文字まで）", "Group name (up to ${MAX_GROUP_CHARS} characters)")
         isSingleLine = true
         filters = arrayOf(InputFilter.LengthFilter(MAX_GROUP_CHARS))
-        contentDescription = "新しいグループの名前"
+        contentDescription = t("新しいグループの名前", "Name of the new group")
     }
     AlertDialog.Builder(context)
-        .setTitle("新しいグループ")
+        .setTitle(t("新しいグループ", "New group"))
         .setView(input)
-        .setPositiveButton("決める") { _, _ ->
+        .setPositiveButton(t("決める", "OK")) { _, _ ->
             val name = input.text.toString().trim()
             if (name.isNotEmpty()) onChosen(name)
         }
-        .setNegativeButton("キャンセル", null)
+        .setNegativeButton(t("キャンセル", "Cancel"), null)
         .show()
 }

@@ -51,20 +51,20 @@ object UrlImporter {
     /** 入力の URL を検査する（名前の解決はしない）。問題があれば、利用者に見せられる文言の例外。 */
     internal fun parse(text: String): URL {
         val raw = text.trim()
-        require(raw.isNotEmpty()) { "URL を入力してください" }
-        require(raw.length <= MAX_URL_CHARS) { "URL が長すぎます" }
-        require(raw.none { it.isISOControl() || it.isWhitespace() }) { "URL に空白や制御文字は使えません" }
+        require(raw.isNotEmpty()) { t("URL を入力してください", "Please enter a URL") }
+        require(raw.length <= MAX_URL_CHARS) { t("URL が長すぎます", "The URL is too long") }
+        require(raw.none { it.isISOControl() || it.isWhitespace() }) { t("URL に空白や制御文字は使えません", "The URL cannot contain spaces or control characters") }
         val url = try {
             URL(raw)
         } catch (_: Exception) {
-            throw IllegalArgumentException("URL の形が正しくありません")
+            throw IllegalArgumentException(t("URL の形が正しくありません", "The URL is not in a valid form"))
         }
-        require(url.protocol == "https") { "https:// で始まる URL だけ取り込めます" }
-        require(url.userInfo == null) { "ユーザー名やパスワードを含む URL は取り込めません" }
-        require(url.port == -1 || url.port == 443) { "ポート番号を指定した URL は取り込めません（443 だけ）" }
+        require(url.protocol == "https") { t("https:// で始まる URL だけ取り込めます", "Only URLs that start with https:// can be imported") }
+        require(url.userInfo == null) { t("ユーザー名やパスワードを含む URL は取り込めません", "URLs that contain a user name or password cannot be imported") }
+        require(url.port == -1 || url.port == 443) { t("ポート番号を指定した URL は取り込めません（443 だけ）", "URLs with a port number cannot be imported (443 only)") }
         val host = url.host.orEmpty()
-        require(host.isNotEmpty() && host.contains('.')) { "URL のホスト名が正しくありません（社内の短い名前や localhost は使えません）" }
-        require(!isIpLiteral(host)) { "IP アドレスの直接指定は取り込めません。ホスト名の URL を入れてください" }
+        require(host.isNotEmpty() && host.contains('.')) { t("URL のホスト名が正しくありません（社内の短い名前や localhost は使えません）", "The host name in the URL is not valid (short internal names and localhost cannot be used)") }
+        require(!isIpLiteral(host)) { t("IP アドレスの直接指定は取り込めません。ホスト名の URL を入れてください", "IP addresses cannot be used directly. Enter a URL with a host name") }
         return url
     }
 
@@ -102,10 +102,10 @@ object UrlImporter {
                 reply.close()
             }
         } catch (e: javax.net.ssl.SSLException) {
-            throw IllegalStateException("安全な接続を確立できませんでした")
+            throw IllegalStateException(t("安全な接続を確立できませんでした", "Could not make a secure connection"))
         } catch (e: IOException) {
             // 中止のために接続を切ったときの例外は、失敗ではなく中止として伝える
-            throw IllegalStateException(if (cancelled) "中止しました" else "ページを取得できませんでした（接続を確認してください）")
+            throw IllegalStateException(if (cancelled) t("中止しました", "Stopped") else t("ページを取得できませんでした（接続を確認してください）", "Could not fetch the page (please check your connection)"))
         }
     }
 
@@ -124,7 +124,7 @@ object UrlImporter {
         val close = { active = null; c.disconnect() }
         if (cancelled) { // 接続を登録する前に届いた中止も有効にする
             close()
-            throw IllegalStateException("中止しました")
+            throw IllegalStateException(t("中止しました", "Stopped"))
         }
         return try {
             val code = c.responseCode
@@ -139,46 +139,46 @@ object UrlImporter {
     private fun open(start: URL, deadline: Long, deps: Deps): Pair<Reply, URL> {
         var url = start
         repeat(MAX_REDIRECTS + 1) {
-            check(url.protocol == "https" && url.userInfo == null && !isIpLiteral(url.host)) { "想定外の接続先のため中止しました" }
-            check(url.port == -1 || url.port == 443) { "想定外の接続先のため中止しました" }
-            check(System.nanoTime() < deadline) { "ページの取得に時間がかかりすぎました" }
-            check(!cancelled) { "中止しました" }
-            check(deps.isPublic(url.host)) { "このアドレスには接続できません（公開されていないアドレスです）" }
+            check(url.protocol == "https" && url.userInfo == null && !isIpLiteral(url.host)) { t("想定外の接続先のため中止しました", "Stopped because the destination was not expected") }
+            check(url.port == -1 || url.port == 443) { t("想定外の接続先のため中止しました", "Stopped because the destination was not expected") }
+            check(System.nanoTime() < deadline) { t("ページの取得に時間がかかりすぎました", "Fetching the page took too long") }
+            check(!cancelled) { t("中止しました", "Stopped") }
+            check(deps.isPublic(url.host)) { t("このアドレスには接続できません（公開されていないアドレスです）", "Cannot connect to this address (it is not a public address)") }
             val reply = deps.transport.get(url)
             val code = reply.code
             if (code in 300..399) {
                 val next = reply.location
                 reply.close()
-                check(!next.isNullOrBlank()) { "転送先を読めません" }
-                url = try { URL(url, next) } catch (_: Exception) { throw IllegalStateException("転送先を読めません") }
+                check(!next.isNullOrBlank()) { t("転送先を読めません", "Cannot read the redirect target") }
+                url = try { URL(url, next) } catch (_: Exception) { throw IllegalStateException(t("転送先を読めません", "Cannot read the redirect target")) }
             } else {
                 if (code != HttpURLConnection.HTTP_OK || reply.body == null) {
                     reply.close()
-                    error("ページを取得できません（サーバーの応答 $code）")
+                    error(t("ページを取得できません（サーバーの応答 $code）", "Cannot fetch the page (the server answered $code)"))
                 }
                 return reply to url
             }
         }
-        throw IllegalStateException("転送が多すぎます")
+        throw IllegalStateException(t("転送が多すぎます", "Too many redirects"))
     }
 
     private fun read(reply: Reply, url: URL, deadline: Long, deps: Deps): Imported {
         val type = reply.contentType.orEmpty()
         val kind = kindOf(type, url.path)
-        check(kind != Kind.OTHER) { "この種類のページは取り込めません（HTML・テキスト・Markdown だけ）" }
+        check(kind != Kind.OTHER) { t("この種類のページは取り込めません（HTML・テキスト・Markdown だけ）", "This kind of page cannot be imported (only HTML, text and Markdown)") }
         val limit = if (kind == Kind.HTML) MAX_HTML_BYTES else Importer.MAX_BYTES - SOURCE_NOTE_BYTES
         var cut = false
         val bytes = checkNotNull(reply.body).use { input ->
             val out = ByteArrayOutputStream()
             val buf = ByteArray(8192)
             while (true) {
-                check(System.nanoTime() < deadline) { "ページの取得に時間がかかりすぎました" }
-                check(!cancelled) { "中止しました" }
+                check(System.nanoTime() < deadline) { t("ページの取得に時間がかかりすぎました", "Fetching the page took too long") }
+                check(!cancelled) { t("中止しました", "Stopped") }
                 val n = input.read(buf)
                 if (n < 0) break
                 if (out.size() + n > limit) {
                     // HTML は上限までで切る（本文は Rust 側で絞る）。テキストは、切ると意味が変わるので断る。
-                    check(kind == Kind.HTML) { "ページが大きすぎます（${Importer.MAX_BYTES / 1024}KB まで）" }
+                    check(kind == Kind.HTML) { t("ページが大きすぎます（${Importer.MAX_BYTES / 1024}KB まで）", "The page is too large (up to ${Importer.MAX_BYTES / 1024} KB)") }
                     out.write(buf, 0, limit - out.size())
                     cut = true
                     break
@@ -189,13 +189,13 @@ object UrlImporter {
         }
         // 切ったときは、末尾の文字が欠けてもよい。先頭の BOM は除く。
         val text = decode(bytes, charsetOf(type, bytes), strict = !cut).removePrefix("\uFEFF")
-        val source = "取得元: ${url.toString().take(300)}"
+        val source = t("取得元: ${url.toString().take(300)}", "Source: ${url.toString().take(300)}")
         return when (kind) {
             Kind.HTML -> {
                 val page = deps.html(text)
-                check(page.markdown.isNotBlank()) { "ページから本文を取り出せませんでした" }
+                check(page.markdown.isNotBlank()) { t("ページから本文を取り出せませんでした", "Could not extract the main text from the page") }
                 val title = page.title.ifBlank { url.host }
-                val note = if (page.truncated) "（本文が大きいため、後ろは取り込んでいません）\n" else ""
+                val note = if (page.truncated) t("（本文が大きいため、後ろは取り込んでいません）\n", "(The text is large, so the rest was not imported)\n") else ""
                 Imported(Importer.cleanTitle(title), page.markdown + "\n" + note + source + "\n", DocFormat.MARKDOWN)
             }
             Kind.MARKDOWN, Kind.TEXT -> {
@@ -240,6 +240,6 @@ object UrlImporter {
                 .decode(ByteBuffer.wrap(bytes))
                 .toString()
         } catch (_: CharacterCodingException) {
-            throw IllegalArgumentException("ページの文字コードを読めません（UTF-8・Shift_JIS・EUC-JP だけ読めます）")
+            throw IllegalArgumentException(t("ページの文字コードを読めません（UTF-8・Shift_JIS・EUC-JP だけ読めます）", "Cannot read the character encoding of the page (only UTF-8, Shift_JIS and EUC-JP can be read)"))
         }
 }

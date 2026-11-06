@@ -4,7 +4,9 @@ import android.content.Context
 import java.io.File
 
 /** 候補から選べるモデル。`sha256` と `bytes` は、取得元（Hugging Face）が公開している値で、固定する。 */
-data class ModelSpec(val label: String, val url: String, val bytes: Long, val sha256: String) {
+data class ModelSpec(val labelJa: String, val labelEn: String, val url: String, val bytes: Long, val sha256: String) {
+    /** 画面に出す名前（いまの言語）。 */
+    val label: String get() = t(labelJa, labelEn)
     val fileName: String get() = url.substringAfterLast('/')
 }
 
@@ -12,18 +14,21 @@ data class ModelSpec(val label: String, val url: String, val bytes: Long, val sh
 internal val MODEL_CATALOG = listOf(
     ModelSpec(
         "Qwen2.5 1.5B（標準・約 1.1GB）",
+        "Qwen2.5 1.5B (standard, about 1.1 GB)",
         "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
         1_117_320_736L,
         "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
     ),
     ModelSpec(
         "Qwen2.5 0.5B（軽い・約 0.5GB・精度は低め）",
+        "Qwen2.5 0.5B (light, about 0.5 GB, lower accuracy)",
         "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
         491_400_032L,
         "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
     ),
     ModelSpec(
         "Qwen2.5 3B（高精度・約 2.1GB・メモリ 3GB 以上）",
+        "Qwen2.5 3B (more accurate, about 2.1 GB, needs 3 GB or more of memory)",
         "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
         2_104_932_768L,
         "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
@@ -36,7 +41,7 @@ data class ActiveModel(val file: File, val sha256: String)
 /** 取得済みのモデル（切り替えの候補）。 */
 data class InstalledModel(val file: File, val sha256: String) {
     /** 画面に出す名前。候補のモデルは候補の名前、取り込んだモデルはファイル名。 */
-    val label: String get() = MODEL_CATALOG.firstOrNull { it.sha256 == sha256 }?.label ?: "取り込んだモデル（${file.name}）"
+    val label: String get() = MODEL_CATALOG.firstOrNull { it.sha256 == sha256 }?.label ?: t("取り込んだモデル（${file.name}）", "Imported model (${file.name})")
     val megabytes: Long get() = file.length() / (1024 * 1024)
 }
 
@@ -80,7 +85,7 @@ object ModelStore {
 
     @Synchronized
     internal fun activate(d: File, file: File, sha256: String) {
-        require(isValidName(file.name) && isValidSha(sha256)) { "モデルの記録が不正です" }
+        require(isValidName(file.name) && isValidSha(sha256)) { t("モデルの記録が不正です", "The model record is invalid") }
         // 一覧を先に更新する（途中で失敗しても、使っているモデルは一覧にある状態を保つ）
         // 登録簿に無かった使用中のモデル（以前の標準のファイルなど）も、一覧から落とさずに引き継ぐ
         val others = installed(d).map { it.file.name to it.sha256 }.filter { it.first != file.name }
@@ -99,7 +104,7 @@ object ModelStore {
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
                 )
             } catch (_: java.io.IOException) {
-                throw IllegalStateException("モデルの記録を保存できません")
+                throw IllegalStateException(t("モデルの記録を保存できません", "Cannot save the model record"))
             }
         } finally {
             tmp.delete() // 成功したあとは、もう無い。失敗したときの取り残しを消す
@@ -134,8 +139,8 @@ object ModelStore {
 
     @Synchronized
     internal fun switchTo(d: File, name: String) {
-        check(!ModelGate.isBusy() && !ModelDownloader.isRunning) { "モデルを使う処理の最中は、切り替えられません" }
-        val m = installed(d).firstOrNull { it.file.name == name } ?: throw IllegalStateException("そのモデルは見つかりません")
+        check(!ModelGate.isBusy() && !ModelDownloader.isRunning) { t("モデルを使う処理の最中は、切り替えられません", "You cannot switch while a task that uses the model is running") }
+        val m = installed(d).firstOrNull { it.file.name == name } ?: throw IllegalStateException(t("そのモデルは見つかりません", "That model was not found"))
         activate(d, m.file, m.sha256)
     }
 
@@ -144,10 +149,10 @@ object ModelStore {
 
     @Synchronized
     internal fun remove(d: File, name: String) {
-        check(!ModelGate.isBusy() && !ModelDownloader.isRunning) { "モデルを使う処理の最中は、削除できません" }
-        val m = installed(d).firstOrNull { it.file.name == name } ?: throw IllegalStateException("そのモデルは見つかりません")
-        check(active(d)?.file?.name != name) { "使っているモデルは削除できません。先に別のモデルへ切り替えてください" }
-        check(m.file.delete() || !m.file.exists()) { "モデルを削除できませんでした" }
+        check(!ModelGate.isBusy() && !ModelDownloader.isRunning) { t("モデルを使う処理の最中は、削除できません", "You cannot delete while a task that uses the model is running") }
+        val m = installed(d).firstOrNull { it.file.name == name } ?: throw IllegalStateException(t("そのモデルは見つかりません", "That model was not found"))
+        check(active(d)?.file?.name != name) { t("使っているモデルは削除できません。先に別のモデルへ切り替えてください", "The model in use cannot be deleted. Switch to another model first") }
+        check(m.file.delete() || !m.file.exists()) { t("モデルを削除できませんでした", "Could not delete the model") }
         writeAtomic(d, INSTALLED, readInstalled(d).filter { it.first != name }.joinToString("\n") { "${it.first}|${it.second}" })
     }
 

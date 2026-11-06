@@ -50,7 +50,7 @@ object Importer {
         requireReadable(context, uri)
         val resolver = context.contentResolver
         val name = displayName(resolver, uri)
-        val bytes = resolver.openInputStream(uri)?.use { readWithTimeout(it) } ?: error("ファイルを開けません")
+        val bytes = resolver.openInputStream(uri)?.use { readWithTimeout(it) } ?: error(t("ファイルを開けません", "Cannot open the file"))
         val markdown = MARKDOWN_EXT.any { name.orEmpty().lowercase().endsWith(it) }
         val stem = name?.substringBeforeLast('.', name)
         return Imported(cleanTitle(stem), decode(bytes), if (markdown) DocFormat.MARKDOWN else DocFormat.TEXT)
@@ -58,13 +58,13 @@ object Importer {
 
     /** 共有の intent から取り込む。テキストは `EXTRA_TEXT`、ファイルは `EXTRA_STREAM`。 */
     fun fromShare(context: Context, intent: Intent): Imported {
-        require(intent.type in ALLOWED_TYPES) { "この種類の共有は受け付けません" }
+        require(intent.type in ALLOWED_TYPES) { t("この種類の共有は受け付けません", "This kind of share is not accepted") }
         @Suppress("DEPRECATION")
         val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
         if (stream != null) return fromUri(context, stream)
         val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-        require(!text.isNullOrBlank()) { "共有された内容が空です" }
-        require(text.length <= MAX_BYTES && text.toByteArray().size <= MAX_BYTES) { "共有されたテキストが大きすぎます" }
+        require(!text.isNullOrBlank()) { t("共有された内容が空です", "The shared content is empty") }
+        require(text.length <= MAX_BYTES && text.toByteArray().size <= MAX_BYTES) { t("共有されたテキストが大きすぎます", "The shared text is too large") }
         return fromText(intent.getStringExtra(Intent.EXTRA_SUBJECT)?.take(MAX_TITLE_CHARS * 2), text)
     }
 
@@ -73,12 +73,12 @@ object Importer {
      * （送り主が権限を持たない他アプリの provider の URI を渡して、代わりに読ませることを防ぐ。）
      */
     internal fun requireReadable(context: Context, uri: Uri) {
-        require(uri.scheme == ContentResolver.SCHEME_CONTENT) { "content:// 以外の場所は読み込めません" }
-        require(uri.authority?.startsWith(context.packageName) != true) { "このアプリのデータは読み込めません" }
+        require(uri.scheme == ContentResolver.SCHEME_CONTENT) { t("content:// 以外の場所は読み込めません", "Only content:// locations can be read") }
+        require(uri.authority?.startsWith(context.packageName) != true) { t("このアプリのデータは読み込めません", "This app's own data cannot be read") }
         val granted = context.checkUriPermission(
             uri, Process.myPid(), Process.myUid(), Intent.FLAG_GRANT_READ_URI_PERMISSION,
         ) == PackageManager.PERMISSION_GRANTED
-        require(granted) { "このファイルを読む許可がありません" }
+        require(granted) { t("このファイルを読む許可がありません", "No permission to read this file") }
     }
 
     private fun displayName(resolver: ContentResolver, uri: Uri): String? =
@@ -94,7 +94,7 @@ object Importer {
         try {
             return readLimited(input)
         } catch (e: java.io.IOException) {
-            throw IllegalStateException("ファイルの読み込みに時間がかかりすぎたか、読めませんでした")
+            throw IllegalStateException(t("ファイルの読み込みに時間がかかりすぎたか、読めませんでした", "Reading the file took too long, or failed"))
         } finally {
             guard.cancel(false)
         }
@@ -108,7 +108,7 @@ object Importer {
             val n = input.read(buf)
             if (n < 0) break
             out.write(buf, 0, n)
-            require(out.size() <= MAX_BYTES) { "ファイルが大きすぎます（${MAX_BYTES / 1024}KB まで）" }
+            require(out.size() <= MAX_BYTES) { t("ファイルが大きすぎます（${MAX_BYTES / 1024}KB まで）", "The file is too large (up to ${MAX_BYTES / 1024} KB)") }
         }
         return out.toByteArray()
     }
@@ -122,7 +122,7 @@ object Importer {
                 .decode(ByteBuffer.wrap(bytes))
                 .toString()
         } catch (e: CharacterCodingException) {
-            throw IllegalArgumentException("UTF-8 の文書だけ取り込めます")
+            throw IllegalArgumentException(t("UTF-8 の文書だけ取り込めます", "Only UTF-8 documents can be imported"))
         }
 
     /**
@@ -146,6 +146,6 @@ object Importer {
         val trimmed = kept.toString().trim()
         val cut = trimmed.codePoints().limit(MAX_TITLE_CHARS.toLong()).toArray()
         val s = String(cut, 0, cut.size).trim()
-        return s.ifEmpty { "無題の資料" }
+        return s.ifEmpty { t("無題の資料", "Untitled document") }
     }
 }

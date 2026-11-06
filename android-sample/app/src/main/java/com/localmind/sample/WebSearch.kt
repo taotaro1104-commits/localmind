@@ -36,8 +36,8 @@ object WebSearch {
     /** 検索の URL。検索語は整えて（空白をそろえ、長さを絞って）エンコードする。 */
     internal fun buildUrl(query: String): URL {
         val q = query.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
-        if (q.isEmpty()) throw WebSearchException("検索語が空です")
-        if (q.length > MAX_QUERY_CHARS) throw WebSearchException("検索語が長すぎます")
+        if (q.isEmpty()) throw WebSearchException(t("検索語が空です", "The search words are empty"))
+        if (q.length > MAX_QUERY_CHARS) throw WebSearchException(t("検索語が長すぎます", "The search words are too long"))
         val enc = URLEncoder.encode(q, "UTF-8")
         return URL(
             "https://$HOST/w/api.php?action=query&generator=search&gsrsearch=$enc&gsrlimit=$RESULTS" +
@@ -58,16 +58,16 @@ object WebSearch {
         }
         active = conn
         try {
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) throw WebSearchException("検索サービスが応答しませんでした")
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) throw WebSearchException(t("検索サービスが応答しませんでした", "The search service did not respond"))
             val body = conn.inputStream.use { input ->
                 val out = java.io.ByteArrayOutputStream()
                 val buf = ByteArray(8192)
                 val deadline = System.nanoTime() + TOTAL_TIMEOUT_NS
                 while (true) {
-                    if (System.nanoTime() > deadline) throw WebSearchException("検索に時間がかかりすぎました")
+                    if (System.nanoTime() > deadline) throw WebSearchException(t("検索に時間がかかりすぎました", "The search took too long"))
                     val n = input.read(buf)
                     if (n < 0) break
-                    if (out.size() + n > MAX_RESPONSE_BYTES) throw WebSearchException("検索の応答が大きすぎます")
+                    if (out.size() + n > MAX_RESPONSE_BYTES) throw WebSearchException(t("検索の応答が大きすぎます", "The search response is too large"))
                     out.write(buf, 0, n)
                 }
                 out.toString(Charsets.UTF_8.name())
@@ -76,9 +76,9 @@ object WebSearch {
         } catch (e: WebSearchException) {
             throw e
         } catch (e: IOException) {
-            throw WebSearchException("インターネットに接続できませんでした")
+            throw WebSearchException(t("インターネットに接続できませんでした", "Could not connect to the internet"))
         } catch (e: RuntimeException) {
-            throw WebSearchException("検索の応答を読めませんでした")
+            throw WebSearchException(t("検索の応答を読めませんでした", "Could not read the search response"))
         } finally {
             active = null
             conn.disconnect()

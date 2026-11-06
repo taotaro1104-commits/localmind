@@ -36,16 +36,16 @@ private class ModelForm(private val activity: Activity) {
     private val ui = Ui(activity)
     val spinner = Spinner(activity).apply {
         adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_dropdown_item, MODEL_CATALOG.map { it.label })
-        contentDescription = "モデルの候補"
+        contentDescription = t("モデルの候補", "Model choices")
     }
     val url = EditText(activity).apply {
-        hint = "または URL を直接入力（https://…）"
+        hint = t("または URL を直接入力（https://…）", "Or enter a URL directly (https://…)")
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         isSingleLine = true
-        contentDescription = "モデルの URL。入れると、候補は使いません"
+        contentDescription = t("モデルの URL。入れると、候補は使いません", "URL of the model. If you enter one, the choices are not used")
     }
     val sha = EditText(activity).apply {
-        hint = "SHA-256（任意。入れると照合します）"
+        hint = t("SHA-256（任意。入れると照合します）", "SHA-256 (optional; it is checked if you enter it)")
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         isSingleLine = true
         visibility = View.GONE
@@ -69,15 +69,15 @@ private class ModelForm(private val activity: Activity) {
         spinner.alpha = if (isCustom) 0.4f else 1f
         sha.visibility = if (isCustom) View.VISIBLE else View.GONE
         warn.visibility = if (isCustom) View.VISIBLE else View.GONE
-        warn.text = "注意: 直接入れた URL のモデルは、このアプリの中で読み込まれます。悪意のあるファイルだと、端末の録音や文字起こしを" +
-            "盗まれるおそれがあります。信頼できる取得元だけを指定してください。"
+        warn.text = t("注意: 直接入れた URL のモデルは、このアプリの中で読み込まれます。悪意のあるファイルだと、端末の録音や文字起こしを", "Warning: a model from a URL you enter is loaded inside this app. A malicious file could steal your recordings and transcripts.") +
+            t("盗まれるおそれがあります。信頼できる取得元だけを指定してください。", "Only specify sources you trust.")
         note.text = buildString {
-            append("議事録の作成は端末の中だけで行います。接続するのは、ダウンロードのときだけです（録音や文字起こしは送りません）。")
+            append(t("議事録の作成は端末の中だけで行います。接続するのは、ダウンロードのときだけです（録音や文字起こしは送りません）。", "Making minutes happens on the device only. The app connects only to download (recordings and transcripts are never sent)."))
             if (isCustom) {
-                append(NL2).append("SHA-256 を入れると、取得元が示す値と照合します（安全の保証ではありません）。入れないと、取得した内容をこのモデルとして記録します。")
-                append("Qwen2.5 以外のモデルは、議事録の質が下がることがあります。")
+                append(NL2).append(t("SHA-256 を入れると、取得元が示す値と照合します（安全の保証ではありません）。入れないと、取得した内容をこのモデルとして記録します。", "If you enter a SHA-256, it is checked against the value the source gives (this is not a guarantee of safety). If you leave it empty, the downloaded content is recorded as this model."))
+                append(t("Qwen2.5 以外のモデルは、議事録の質が下がることがあります。", "Models other than Qwen2.5 may make worse minutes."))
             }
-            if (isMetered(activity)) append(NL2).append("今の回線は従量制の可能性があります。Wi-Fi をおすすめします。")
+            if (isMetered(activity)) append(NL2).append(t("今の回線は従量制の可能性があります。Wi-Fi をおすすめします。", "Your connection may be metered. Wi-Fi is recommended."))
         }
     }
 
@@ -95,7 +95,7 @@ private class ModelForm(private val activity: Activity) {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.px(24), ui.px(12), ui.px(24), ui.px(4))
-            addView(ui.text(15f, Palette.ink).apply { text = "議事録を作るには、AI モデルが必要です。候補から選びます。" }, ui.lp())
+            addView(ui.text(15f, Palette.ink).apply { text = t("議事録を作るには、AI モデルが必要です。候補から選びます。", "You need an AI model to make minutes. Choose one from the list.") }, ui.lp())
             addView(spinner, ui.lp(top = 8))
             addView(url, ui.lp(top = 12))
             addView(sha, ui.lp(top = 4))
@@ -112,16 +112,16 @@ private class ModelForm(private val activity: Activity) {
  */
 internal fun offerModelDownload(activity: Activity, onReady: () -> Unit) {
     if (ModelDownloader.isRunning) {
-        AlertDialog.Builder(activity).setMessage("モデルをダウンロード中です。終わるまでお待ちください。")
-            .setPositiveButton("閉じる", null).show()
+        AlertDialog.Builder(activity).setMessage(t("モデルをダウンロード中です。終わるまでお待ちください。", "A model is being downloaded. Please wait until it finishes."))
+            .setPositiveButton(t("閉じる", "Close"), null).show()
         return
     }
     val form = ModelForm(activity)
     val dialog = AlertDialog.Builder(activity)
-        .setTitle("モデルをダウンロード")
+        .setTitle(t("モデルをダウンロード", "Download a model"))
         .setView(form.view())
-        .setPositiveButton("ダウンロード", null)
-        .setNegativeButton("やめる", null)
+        .setPositiveButton(t("ダウンロード", "Download"), null)
+        .setNegativeButton(t("やめる", "Cancel"), null)
         .create()
     dialog.setOnShowListener {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -136,23 +136,23 @@ internal fun offerModelDownload(activity: Activity, onReady: () -> Unit) {
 /** 直接入れた URL のモデルは、同意（チェック）してから取得する。接続先のホスト名を見せる。 */
 private fun confirmCustom(activity: Activity, host: String, onConfirmed: () -> Unit) {
     val ui = Ui(activity)
-    val agree = CheckBox(activity).apply { text = "リスクを理解しました" }
+    val agree = CheckBox(activity).apply { text = t("リスクを理解しました", "I understand the risk") }
     val box = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(ui.px(24), ui.px(12), ui.px(24), ui.px(4))
         addView(ui.text(15f, Palette.ink).apply {
-            text = "「$host」からモデルを取得します。" + NL2 +
-                "このモデルは、録音や文字起こしを扱うこのアプリの中で読み込まれます。中身を確かめられないファイルは、" +
-                "悪意があると、データの流出や、アプリの乗っ取りにつながるおそれがあります。" + NL2 +
-                "前に使っていたモデルは残します。「モデルを変更」で、いつでも切り替えたり、削除したりできます。"
+            text = t("「$host」からモデルを取得します。", "The model will be downloaded from “$host”.") + NL2 +
+                t("このモデルは、録音や文字起こしを扱うこのアプリの中で読み込まれます。中身を確かめられないファイルは、", "This model is loaded inside this app, which handles recordings and transcripts. A file whose contents you cannot check") +
+                t("悪意があると、データの流出や、アプリの乗っ取りにつながるおそれがあります。", "can leak data or take over the app if it is malicious.") + NL2 +
+                t("前に使っていたモデルは残します。「モデルを変更」で、いつでも切り替えたり、削除したりできます。", "The previous model is kept. You can switch to it or delete it at any time with “Change model”.")
         }, ui.lp())
         addView(agree, ui.lp(top = 12))
     }
     val dialog = AlertDialog.Builder(activity)
-        .setTitle("この取得元を信頼しますか？")
+        .setTitle(t("この取得元を信頼しますか？", "Do you trust this source?"))
         .setView(ScrollView(activity).apply { addView(box) })
-        .setPositiveButton("取得する") { _, _ -> onConfirmed() }
-        .setNegativeButton("やめる", null)
+        .setPositiveButton(t("取得する", "Download")) { _, _ -> onConfirmed() }
+        .setNegativeButton(t("やめる", "Cancel"), null)
         .create()
     dialog.setOnShowListener {
         val ok = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
@@ -171,10 +171,10 @@ private class ProgressDialog(activity: Activity, initial: String) {
     }
     val bar = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = PROGRESS_STEPS
-        contentDescription = "ダウンロードの進み具合"
+        contentDescription = t("ダウンロードの進み具合", "Download progress")
     }
     val dialog: AlertDialog = AlertDialog.Builder(activity)
-        .setTitle("ダウンロード中")
+        .setTitle(t("ダウンロード中", "Downloading"))
         .setView(LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.px(24), ui.px(16), ui.px(24), ui.px(8))
@@ -182,12 +182,12 @@ private class ProgressDialog(activity: Activity, initial: String) {
             addView(bar, ui.lp(top = 12))
         })
         .setCancelable(false)
-        .setNegativeButton("中止", null)
+        .setNegativeButton(t("中止", "Stop"), null)
         .show()
         .also { d ->
             d.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
                 ModelDownloader.cancel()
-                label.text = "中止しています…"
+                label.text = t("中止しています…", "Stopping…")
             }
         }
 }
@@ -195,16 +195,16 @@ private class ProgressDialog(activity: Activity, initial: String) {
 private fun showFailure(activity: Activity, error: Throwable) {
     val debuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     if (debuggable) Log.w("LMSample", "model download failure: $error", error)
-    val msg = (error as? ModelDownloadException)?.message ?: "ダウンロードできませんでした"
-    AlertDialog.Builder(activity).setTitle("ダウンロードできませんでした").setMessage(msg)
-        .setPositiveButton("閉じる", null).show()
+    val msg = (error as? ModelDownloadException)?.message ?: t("ダウンロードできませんでした", "Could not download")
+    AlertDialog.Builder(activity).setTitle(t("ダウンロードできませんでした", "Could not download")).setMessage(msg)
+        .setPositiveButton(t("閉じる", "Close"), null).show()
 }
 
 private fun runDownload(activity: Activity, source: ModelSource, onReady: () -> Unit) {
     val resumed = ModelDownloader.partialBytes(activity, source)
     val progress = ProgressDialog(
         activity,
-        if (resumed > 0) "続きから再開します（${megabytes(resumed)}MB 取得済み）…" else "接続しています…",
+        if (resumed > 0) t("続きから再開します（${megabytes(resumed)}MB 取得済み）…", "Resuming (${megabytes(resumed)} MB already downloaded)…") else t("接続しています…", "Connecting…"),
     )
     activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     thread(name = "lm-model-download") {
@@ -212,7 +212,7 @@ private fun runDownload(activity: Activity, source: ModelSource, onReady: () -> 
         val result = runCatching {
             ModelDownloader.download(
                 activity.applicationContext, source,
-                onVerify = { activity.runOnUiThread { progress.label.text = "内容を確かめています…" } },
+                onVerify = { activity.runOnUiThread { progress.label.text = t("内容を確かめています…", "Checking the contents…") } },
             ) { done, total ->
                 val step = (done * PROGRESS_STEPS / total).toInt()
                 if (step != lastStep) { // 画面の更新は、0.1% 進んだときだけ
@@ -229,8 +229,8 @@ private fun runDownload(activity: Activity, source: ModelSource, onReady: () -> 
             runCatching { progress.dialog.dismiss() } // 画面が破棄されていても、ウィンドウを残さない
             if (activity.isDestroyed) return@runOnUiThread
             result.onSuccess {
-                if (it) onReady() else AlertDialog.Builder(activity).setMessage("すでにダウンロード中です")
-                    .setPositiveButton("閉じる", null).show()
+                if (it) onReady() else AlertDialog.Builder(activity).setMessage(t("すでにダウンロード中です", "Already downloading"))
+                    .setPositiveButton(t("閉じる", "Close"), null).show()
             }.onFailure { showFailure(activity, it) }
         }
     }

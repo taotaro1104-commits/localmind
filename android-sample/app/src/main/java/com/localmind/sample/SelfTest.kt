@@ -42,23 +42,23 @@ fun runSelfTest(dir: File): List<Check> {
     fun profile(nano: Boolean, gguf: Boolean) =
         DeviceProfile(ramMb = 8192u, nanoAvailable = nano, pcReachable = false, ggufInstalled = gguf)
 
-    results += check("経路: Nano があれば短文は Nano") {
+    results += check(t("経路: Nano があれば短文は Nano", "Route: a short text uses Nano if it is there")) {
         decideRoute(Task.SHORT_TEXT, profile(true, true)).takeIf { it != Route.NANO }?.let { "got $it" }
     }
-    results += check("経路: Nano が無ければ GGUF へ縮退") {
+    results += check(t("経路: Nano が無ければ GGUF へ縮退", "Route: falls back to GGUF if there is no Nano")) {
         decideRoute(Task.SHORT_TEXT, profile(false, true)).takeIf { it != Route.GGUF }?.let { "got $it" }
     }
-    results += check("経路: GGUF が無ければ Kotlin 例外（FfiException.Route）") {
+    results += check(t("経路: GGUF が無ければ Kotlin 例外（FfiException.Route）", "Route: a Kotlin exception (FfiException.Route) if there is no GGUF")) {
         try {
             decideRoute(Task.DOCUMENT_RAG, profile(false, false))
-            "例外が出なかった"
+            t("例外が出なかった", "No exception was thrown")
         } catch (e: FfiException.Route) {
             null
         }
     }
 
     val lexical = File(dir, "lexical.db").also { it.delete() }
-    results += check("検索: 登録して引ける・無関係な質問は見つかりません") {
+    results += check(t("検索: 登録して引ける・無関係な質問は見つかりません", "Search: registered documents are found, an unrelated question is not")) {
         SearchEngine.openLexical(lexical.absolutePath).use { e ->
             e.upsert("a", "契約書の解除は第12条に定める")
             e.upsert("b", "議事録の保存期間は30日")
@@ -72,47 +72,47 @@ fun runSelfTest(dir: File): List<Check> {
             }
         }
     }
-    results += check("検索: 再オープンしても索引が残る（永続化）") {
+    results += check(t("検索: 再オープンしても索引が残る（永続化）", "Search: the index survives a reopen (persistence)")) {
         SearchEngine.openLexical(lexical.absolutePath).use { e ->
             if (e.len() != 2uL) "len=${e.len()}" else null
         }
     }
 
-    results += check("埋め込み注入: Kotlin 実装でも登録・検索できる") {
+    results += check(t("埋め込み注入: Kotlin 実装でも登録・検索できる", "Injected embedding: registering and searching also work with a Kotlin implementation")) {
         val db = File(dir, "toy.db").also { it.delete() }
         SearchEngine.open(db.absolutePath, ToyEmbedder(), e5SearchConfig()).use { e ->
             e.upsert("a", "予算案を承認した")
             e.search("予算案", 3u)
-            if (e.isEmpty()) "登録されていない" else null
+            if (e.isEmpty()) t("登録されていない", "Not registered") else null
         }
     }
-    results += check("埋め込み注入: dim() の例外は FfiException になる（クラッシュしない）") {
+    results += check(t("埋め込み注入: dim() の例外は FfiException になる（クラッシュしない）", "Injected embedding: an exception from dim() becomes a FfiException (no crash)")) {
         val db = File(dir, "toy2.db").also { it.delete() }
         try {
             SearchEngine.open(db.absolutePath, ToyEmbedder(failDim = true), e5SearchConfig()).close()
-            "例外が出なかった"
+            t("例外が出なかった", "No exception was thrown")
         } catch (e: FfiException) {
             null
         }
     }
-    results += check("入力検証: 相対パスは拒否") {
+    results += check(t("入力検証: 相対パスは拒否", "Input check: a relative path is refused")) {
         try {
             SearchEngine.openLexical("relative.db").close()
-            "拒否されなかった"
+            t("拒否されなかった", "It was not refused")
         } catch (e: FfiException.Search) {
             null
         }
     }
-    results += check("入力検証: 不正な設定（NaN）は open で拒否") {
+    results += check(t("入力検証: 不正な設定（NaN）は open で拒否", "Input check: an invalid setting (NaN) is refused at open")) {
         val db = File(dir, "cfg.db").also { it.delete() }
         try {
             SearchEngine.open(db.absolutePath, ToyEmbedder(), SearchConfig(Float.NaN, 0f)).close()
-            "拒否されなかった"
+            t("拒否されなかった", "It was not refused")
         } catch (e: FfiException.Search) {
             null
         }
     }
-    results += check("モデル取得: 接続先は https の許可したホストだけ") {
+    results += check(t("モデル取得: 接続先は https の許可したホストだけ", "Model download: only allowed https hosts are accepted")) {
         val ok = listOf("https://huggingface.co/a", "https://us.aws.cdn.hf.co/x?y=1")
         val bad = listOf(
             "http://hf.co/x", "https://hf.co/x", "https://evilhf.co/x", "https://hf.co.evil.com/x",
@@ -120,9 +120,9 @@ fun runSelfTest(dir: File): List<Check> {
         )
         val wrong = ok.filterNot { ModelDownloader.isSafeRedirect(java.net.URL(it)) } +
             bad.filter { ModelDownloader.isSafeRedirect(java.net.URL(it)) }
-        if (wrong.isEmpty()) null else "判定が違う: ${wrong.size} 件"
+        if (wrong.isEmpty()) null else t("判定が違う: ${wrong.size} 件", "Wrong decisions: ${wrong.size}")
     }
-    results += check("モデル取得: 直接入れた URL は https のみ・認証情報なし・SHA-256 は書式を確かめる") {
+    results += check(t("モデル取得: 直接入れた URL は https のみ・認証情報なし・SHA-256 は書式を確かめる", "Model download: a URL you enter must be https, without credentials, and the SHA-256 form is checked")) {
         fun accepted(url: String, sha: String? = null) = try { ModelSource.custom(url, sha); true } catch (_: ModelDownloadException) { false }
         val wrong = listOf(
             accepted("https://example.com/m.gguf"),
@@ -134,20 +134,20 @@ fun runSelfTest(dir: File): List<Check> {
             !accepted("https://example.com/m.gguf", "xyz"),
             accepted("https://example.com/m.gguf", "a".repeat(64)),
         ).count { !it }
-        if (wrong == 0) null else "判定が違う: $wrong 件"
+        if (wrong == 0) null else t("判定が違う: $wrong 件", "Wrong decisions: $wrong")
     }
-    results += check("モデル取得: 保存するファイル名はパスを含まない .gguf だけ") {
+    results += check(t("モデル取得: 保存するファイル名はパスを含まない .gguf だけ", "Model download: the saved file name must be a .gguf without any path")) {
         val ok = listOf("qwen2.5-1.5b-instruct-q4_k_m.gguf", "custom-0123456789ab.gguf")
         val bad = listOf("../x.gguf", "a/b.gguf", "..gguf", "x.bin", "", "a\b.gguf", ".." + ".gguf")
         val wrong = ok.filterNot { ModelStore.isValidName(it) } + bad.filter { ModelStore.isValidName(it) }
-        if (wrong.isEmpty()) null else "判定が違う: ${wrong.size} 件"
+        if (wrong.isEmpty()) null else t("判定が違う: ${wrong.size} 件", "Wrong decisions: ${wrong.size}")
     }
-    results += check("モデル取得: LAN・自端末のアドレスは、リダイレクト先として断る") {
+    results += check(t("モデル取得: LAN・自端末のアドレスは、リダイレクト先として断る", "Model download: LAN and local addresses are refused as redirect targets")) {
         val local = listOf("127.0.0.1", "10.0.0.5", "192.168.1.1", "172.16.0.9", "169.254.1.1", "[::1]", "[fd00::1]", "0.0.0.0")
         val wrong = local.filterNot { ModelDownloader.isLocalAddress(it) } + listOf("8.8.8.8").filter { ModelDownloader.isLocalAddress(it) }
-        if (wrong.isEmpty()) null else "判定が違う: $wrong"
+        if (wrong.isEmpty()) null else t("判定が違う: $wrong", "Wrong decisions: $wrong")
     }
-    results += check("モデルの記録: 壊れた記録は使わず、切り替えと掃除が働く") {
+    results += check(t("モデルの記録: 壊れた記録は使わず、切り替えと掃除が働く", "Model records: a damaged record is not used, and switching and cleaning work")) {
         val d = File(dir, "models").also { it.deleteRecursively(); it.mkdirs() }
         val shaA = "a".repeat(64)
         val shaB = "b".repeat(64)
@@ -155,25 +155,25 @@ fun runSelfTest(dir: File): List<Check> {
         val b = File(d, "b.gguf").also { it.writeText("y") }
         val part = File(d, "dl-0123456789ab.part").also { it.writeText("z") }
         val errors = mutableListOf<String>()
-        if (ModelStore.active(d) != null) errors += "空なのに有効"
+        if (ModelStore.active(d) != null) errors += t("空なのに有効", "Valid even though empty")
         File(d, "active.txt").writeText("../a.gguf|$shaA")
-        if (ModelStore.active(d) != null) errors += "パスを含む記録を受け入れた"
+        if (ModelStore.active(d) != null) errors += t("パスを含む記録を受け入れた", "A record containing a path was accepted")
         File(d, "active.txt").writeText("a.gguf|xyz")
-        if (ModelStore.active(d) != null) errors += "不正な SHA の記録を受け入れた"
+        if (ModelStore.active(d) != null) errors += t("不正な SHA の記録を受け入れた", "A record with an invalid SHA was accepted")
         ModelStore.activate(d, a, shaA)
-        if (ModelStore.active(d)?.sha256 != shaA) errors += "記録を読み戻せない"
+        if (ModelStore.active(d)?.sha256 != shaA) errors += t("記録を読み戻せない", "The record cannot be read back")
         ModelStore.activate(d, b, shaB)
-        if (ModelStore.active(d)?.file?.name != "b.gguf" || !a.exists()) errors += "切り替えで、前のモデルが先に消えた"
-        if (ModelStore.installed(d).map { it.file.name } != listOf("a.gguf", "b.gguf")) errors += "取得済みの一覧が違う"
+        if (ModelStore.active(d)?.file?.name != "b.gguf" || !a.exists()) errors += t("切り替えで、前のモデルが先に消えた", "Switching deleted the previous model first")
+        if (ModelStore.installed(d).map { it.file.name } != listOf("a.gguf", "b.gguf")) errors += t("取得済みの一覧が違う", "The list of downloaded models is wrong")
         ModelStore.prune(d, alsoParts = false)
-        if (!a.exists() || !part.exists()) errors += "掃除（取りかけを残す・取得済みを消さない）が違う"
+        if (!a.exists() || !part.exists()) errors += t("掃除（取りかけを残す・取得済みを消さない）が違う", "Cleaning is wrong (it should keep partial downloads and downloaded models)")
         ModelStore.prune(d, alsoParts = true)
-        if (part.exists() || !a.exists() || !b.exists()) errors += "掃除（取りかけも消す）が違う"
+        if (part.exists() || !a.exists() || !b.exists()) errors += t("掃除（取りかけも消す）が違う", "Cleaning is wrong (it should also delete partial downloads)")
         ModelStore.switchTo(d, "a.gguf")
-        if (ModelStore.active(d)?.sha256 != shaA) errors += "切り替えられない"
-        try { ModelStore.remove(d, "a.gguf"); errors += "使っているモデルを消せた" } catch (_: IllegalStateException) {}
+        if (ModelStore.active(d)?.sha256 != shaA) errors += t("切り替えられない", "Cannot switch")
+        try { ModelStore.remove(d, "a.gguf"); errors += t("使っているモデルを消せた", "The model in use could be deleted") } catch (_: IllegalStateException) {}
         ModelStore.remove(d, "b.gguf")
-        if (b.exists() || ModelStore.installed(d).size != 1) errors += "削除が働かない"
+        if (b.exists() || ModelStore.installed(d).size != 1) errors += t("削除が働かない", "Deleting does not work")
         d.deleteRecursively()
         if (errors.isEmpty()) null else errors.joinToString("、")
     }

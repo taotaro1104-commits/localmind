@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-class WebSearchTest {
+class WebSearchTest : JapaneseUi() {
     @Test
     fun theUrlIsAFixedHttpsWikipediaEndpointWithTheQueryEncoded() {
         val url = WebSearch.buildUrl("東京  天気")

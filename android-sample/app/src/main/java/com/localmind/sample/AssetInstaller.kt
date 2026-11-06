@@ -19,7 +19,7 @@ fun installAssets(context: Context, assetDir: String, files: List<String>, force
     val names = context.assets.list(assetDir).orEmpty().toSet()
     val missing = files.filter { it !in names }
     check(missing.isEmpty()) {
-        "assets に $assetDir/${missing.joinToString()} がありません（README の手順でモデルを置いてビルドし直してください）"
+        t("assets に $assetDir/${missing.joinToString()} がありません（README の手順でモデルを置いてビルドし直してください）", "$assetDir/${missing.joinToString()} is missing from assets (put the models in place as the README says, then build again)")
     }
     val dir = File(context.filesDir, "model/$assetDir")
     if (force) dir.deleteRecursively()
@@ -32,7 +32,7 @@ fun installAssets(context: Context, assetDir: String, files: List<String>, force
         if (have == sizes.getValue(name)) 0L else sizes.getValue(name)
     }
     check(needed == 0L || dir.usableSpace >= needed + FREE_SPACE_MARGIN) {
-        "保存領域が足りません（約 ${(needed + FREE_SPACE_MARGIN) / (1024 * 1024)}MB 必要）"
+        t("保存領域が足りません（約 ${(needed + FREE_SPACE_MARGIN) / (1024 * 1024)}MB 必要）", "Not enough storage (about ${(needed + FREE_SPACE_MARGIN) / (1024 * 1024)} MB needed)")
     }
     for (name in files) {
         val target = File(dir, name)
@@ -45,7 +45,7 @@ fun installAssets(context: Context, assetDir: String, files: List<String>, force
                     out.fd.sync()
                 }
             }
-            check(tmp.renameTo(target)) { "$name を置けません" }
+            check(tmp.renameTo(target)) { t("$name を置けません", "Could not place $name") }
         } finally {
             tmp.delete() // 失敗したときの断片を残さない（成功時は rename 済みで何もしない）
         }

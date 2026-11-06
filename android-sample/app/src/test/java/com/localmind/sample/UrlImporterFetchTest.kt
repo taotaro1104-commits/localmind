@@ -10,7 +10,7 @@ import uniffi.lm_ffi.DocFormat
 import uniffi.lm_ffi.HtmlPage
 
 /** 通信と名前の解決を差し替えて、取得の流れ（転送・検査・上限）を確かめる。 */
-class UrlImporterFetchTest {
+class UrlImporterFetchTest : JapaneseUi() {
     private val requested = mutableListOf<String>()
     private var closed = 0
 

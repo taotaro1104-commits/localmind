@@ -11,7 +11,7 @@ import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
-class ModelStoreTest {
+class ModelStoreTest : JapaneseUi() {
     private lateinit var dir: File
     private val shaA = "a".repeat(64)
     private val shaB = "b".repeat(64)

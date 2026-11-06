@@ -30,7 +30,7 @@ class MainActivity : Activity() {
             window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
         }
         if (!started.compareAndSet(false, true)) {
-            dashboard.notice("自己テストは実行済みです。アプリを終了してから、もう一度起動してください。")
+            dashboard.notice(t("自己テストは実行済みです。アプリを終了してから、もう一度起動してください。", "The self-test has already run. Quit the app and start it again."))
             return
         }
 
@@ -45,7 +45,7 @@ class MainActivity : Activity() {
                     run()
                 } catch (e: Throwable) {
                     // ライブラリのロード失敗（.so の ABI 違いなど）もここに来る。
-                    listOf(Check("実行", false, "${e::class.simpleName}: ${e.message}"))
+                    listOf(Check(t("実行", "Run"), false, "${e::class.simpleName}: ${e.message}"))
                 }
                 if (debuggable) {
                     results.forEach { Log.i(TAG, "${if (it.ok) "PASS" else "FAIL"} ${it.name} ${it.detail}") }
@@ -54,9 +54,9 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread { dashboard.finish(title, results) }
             }
-            stage("基本") { runSelfTest(appContext.filesDir) }
-            stage("実モデル(e5)") {
-                if (ortError != null) listOf(Check("ORT_DYLIB_PATH の設定", false, ortError)) else runE5Test(appContext)
+            stage(t("基本", "Basic")) { runSelfTest(appContext.filesDir) }
+            stage(t("実モデル(e5)", "Real model (e5)")) {
+                if (ortError != null) listOf(Check(t("ORT_DYLIB_PATH の設定", "Setting ORT_DYLIB_PATH"), false, ortError)) else runE5Test(appContext)
             }
             runOnUiThread {
                 dashboard.done(

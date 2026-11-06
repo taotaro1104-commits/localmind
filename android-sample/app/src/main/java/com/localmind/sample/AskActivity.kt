@@ -57,10 +57,10 @@ class AskActivity : Activity() {
                 return@runOnUiThread
             }
             confirmDialog = AlertDialog.Builder(this)
-                .setTitle("Wikipedia に送りますか？")
-                .setMessage("この検索語を、Wikipedia（日本語版）へ送ります。" + NL2 + "「$query」" + NL2 + "送らないと、端末の中の知識だけで答えます。")
-                .setPositiveButton("送る") { _, _ -> allow.set(true) }
-                .setNegativeButton("送らない", null)
+                .setTitle(t("Wikipedia に送りますか？", "Send to Wikipedia?"))
+                .setMessage(t("この検索語を、Wikipedia（日本語版）へ送ります。", "This search will be sent to Wikipedia (Japanese edition).") + NL2 + "「$query」" + NL2 + t("送らないと、端末の中の知識だけで答えます。", "If you do not send it, the answer comes from the model on your device only."))
+                .setPositiveButton(t("送る", "Send")) { _, _ -> allow.set(true) }
+                .setNegativeButton(t("送らない", "Don't send"), null)
                 .setOnDismissListener { confirmDialog = null; latch.countDown() }
                 .show()
         }
@@ -76,13 +76,13 @@ class AskActivity : Activity() {
     private fun cancel() {
         confirmDialog?.dismiss()
         AskJob.cancel()
-        screen.setStatus("中止しています…")
+        screen.setStatus(t("中止しています…", "Stopping…"))
     }
 
     private fun ask(question: String, mode: AskMode) {
         if (AskJob.isRunning) return
         if (MinutesJob.isRunning || SpeechJob.isRunning || RecorderState.active) {
-            screen.setStatus("録音・文字起こし・議事録の作成が終わってからお試しください", ok = false)
+            screen.setStatus(t("録音・文字起こし・議事録の作成が終わってからお試しください", "Please wait until recording, transcription or minutes are finished"), ok = false)
             return
         }
         if (ModelStore.active(applicationContext) == null) {
@@ -91,7 +91,7 @@ class AskActivity : Activity() {
         }
         hideKeyboard()
         screen.setRunning(true)
-        screen.setStatus("準備しています…")
+        screen.setStatus(t("準備しています…", "Getting ready…"))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val context = applicationContext
         thread(name = "lm-ask") {
@@ -108,7 +108,7 @@ class AskActivity : Activity() {
                 screen.setRunning(false)
                 result.onSuccess { outcome ->
                     if (outcome == null) {
-                        screen.setStatus("すでに質問に答えています", ok = false)
+                        screen.setStatus(t("すでに質問に答えています", "Already answering a question"), ok = false)
                     } else {
                         screen.setStatus(null)
                         screen.showAnswer(outcome)
@@ -121,16 +121,16 @@ class AskActivity : Activity() {
     private fun fail(e: Throwable) {
         if (debuggable) android.util.Log.w("LMSample", "ask failure: $e", e)
         if (e is LlmException.Cancelled) {
-            screen.setStatus("中止しました")
+            screen.setStatus(t("中止しました", "Stopped"))
             return
         }
-        val msg = MinutesJob.userMessage(e, "回答を作れませんでした")
+        val msg = MinutesJob.userMessage(e, t("回答を作れませんでした", "Could not make an answer"))
         screen.setStatus(msg, ok = false)
         // モデルが読み込めないときは、モデルを選び直せるようにする
         if (e is LlmException.Integrity || e is LlmException.Engine) {
-            AlertDialog.Builder(this).setTitle("回答を作れませんでした").setMessage(msg)
-                .setPositiveButton("閉じる", null)
-                .setNeutralButton("モデルを変更") { _, _ -> switchModel() }
+            AlertDialog.Builder(this).setTitle(t("回答を作れませんでした", "Could not make an answer")).setMessage(msg)
+                .setPositiveButton(t("閉じる", "Close"), null)
+                .setNeutralButton(t("モデルを変更", "Change model")) { _, _ -> switchModel() }
                 .show()
         }
     }

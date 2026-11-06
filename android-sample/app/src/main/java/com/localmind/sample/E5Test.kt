@@ -44,12 +44,12 @@ fun runE5Test(context: Context): List<Check> {
     }
 
     var dir: File? = null
-    if (!run("モデルを filesDir へ展開") { dir = installModel(context); null }) return results
+    if (!run(t("モデルを filesDir へ展開", "Extract the model to filesDir")) { dir = installModel(context); null }) return results
     val modelDir = dir ?: return results
 
     val db = File(context.filesDir, "e5.db").also { it.delete() }
     var engine: SearchEngine? = null
-    run("実モデルを読み込む（SHA-256 検証 + 初期化）") {
+    run(t("実モデルを読み込む（SHA-256 検証 + 初期化）", "Load the real model (SHA-256 check + initialization)")) {
         engine = try {
             SearchEngine.openE5(db.absolutePath, modelDir.absolutePath, e5SearchConfig())
         } catch (e: FfiException.Integrity) {
@@ -65,28 +65,28 @@ fun runE5Test(context: Context): List<Check> {
     }
     val e = engine ?: return results
     e.use {
-        run("文書を登録（4 件・埋め込み）") {
+        run(t("文書を登録（4 件・埋め込み）", "Register documents (4 items, embedded)")) {
             e.upsert("contract", "契約書の解除は第12条に定める。解除するには30日前までに書面で通知する。")
             e.upsert("minutes", "議事録の保存期間は30日とし、期限を過ぎた録音は自動的に削除される。")
             e.upsert("budget", "来期の予算案は営業部の増員を含めて承認された。")
             e.upsert("travel", "出張の経費精算は帰着後5営業日以内に申請する。")
             if (e.len() != 4uL) "len=${e.len()}" else null
         }
-        run("意味検索: 言い換えた質問で正しい文書が 1 位") {
+        run(t("意味検索: 言い換えた質問で正しい文書が 1 位", "Semantic search: a reworded question finds the right document first")) {
             val r = e.search("契約をやめたいときはどうすればいいですか", 3u)
             if (!r.found || r.hits.firstOrNull()?.id != "contract") "$r" else null
         }
-        run("意味検索: 別の質問で別の文書が 1 位") {
+        run(t("意味検索: 別の質問で別の文書が 1 位", "Semantic search: another question finds another document first")) {
             val r = e.search("録音データはいつ消えますか", 3u)
             if (!r.found || r.hits.firstOrNull()?.id != "minutes") "$r" else null
         }
-        run("無関係な質問は「見つかりません」") {
+        run(t("無関係な質問は「見つかりません」", "An unrelated question gives “not found”")) {
             val r = e.search("宇宙旅行の費用はいくらですか", 3u)
             if (r.found) "$r" else null
         }
     }
     // 再オープンは、先のエンジンを閉じてから行う（モデルを同時に 2 つ読むとメモリが倍になる）。
-    run("再オープンしても索引が残る（モデルの読み込みを含む）") {
+    run(t("再オープンしても索引が残る（モデルの読み込みを含む）", "The index survives a reopen (including loading the model)")) {
         SearchEngine.openE5(db.absolutePath, modelDir.absolutePath, e5SearchConfig()).use {
             if (it.len() != 4uL) "len=${it.len()}" else null
         }

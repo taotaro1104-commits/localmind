@@ -6,7 +6,7 @@ import org.junit.Test
 import uniffi.lm_ffi.DocFormat
 import uniffi.lm_ffi.DocumentInfo
 
-class DocGroupsTest {
+class DocGroupsTest : JapaneseUi() {
     private fun doc(id: String, group: String) = DocumentInfo(id, "題$id", DocFormat.TEXT, group, 1u)
 
     private val docs = listOf(doc("a", "人事"), doc("b", ""), doc("c", "経理"), doc("d", "人事"), doc("e", "Admin"))

@@ -19,7 +19,7 @@ off the device**.
 </p>
 
 *From the left: document search with sources, document groups, minutes with the time of the cited speech,
-and asking the AI (emulator). The app's screens are in Japanese for now.*
+and asking the AI (emulator, Japanese screens).*
 
 ## What it does
 
@@ -29,6 +29,7 @@ and asking the AI (emulator). The app's screens are in Japanese for now.*
 | Minutes | Writes a summary, decisions, action items and open issues from the transcript, using a local LLM (llama.cpp). Each item carries the time of the speech it is based on, and items that cannot cite a real utterance are left out. |
 | Document search | Imports text and Markdown documents by typing, from a file, from the share sheet, or from a **URL**. It combines full-text search (BM25) with semantic search and shows where the answer is, with the document, heading and line number. When there is no answer it says "not found". Documents can be put into **groups**, and both the list and the search range can be switched between them. |
 | Asking the AI | Ask questions without loading any document. By default it answers on the device alone. Only when you choose, it sends short search words made by the AI to the Japanese Wikipedia, after you confirm them, and answers from the results (with sources). |
+| Screen language | The app's screens are in Japanese and English, following the device language (or the per-app language on Android 13 and later). Transcription and minutes are tuned for Japanese for now. |
 | Switching AI models | Pick Qwen2.5 0.5B, 1.5B or 3B, or give a URL for another model (GGUF) to download. Downloaded models stay on the device, and you can switch between them or delete them at any time. |
 
 ## Principles

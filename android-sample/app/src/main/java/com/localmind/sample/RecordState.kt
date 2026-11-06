@@ -73,5 +73,5 @@ object Purger {
             val store = openRecordingStore(context)
             store.purgeExpired(System.currentTimeMillis().toULong(), RecordPrefs(context).retentionDays.toUInt())
             store.cleanStaleTmp()
-        }.exceptionOrNull()?.let { userMessage(it, debuggable = false, fallback = "古い録音を消せませんでした") }
+        }.exceptionOrNull()?.let { userMessage(it, debuggable = false, fallback = t("古い録音を消せませんでした", "Could not delete the old recordings")) }
 }

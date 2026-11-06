@@ -8,7 +8,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ModelDownloaderTest {
+class ModelDownloaderTest : JapaneseUi() {
     private val mb = 1024L * 1024
 
     @Test

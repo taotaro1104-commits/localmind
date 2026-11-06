@@ -68,7 +68,7 @@ internal object NetGuard {
             val peer = s?.inetAddress
             if (peer == null || !isPublic(peer)) {
                 runCatching { s?.close() }
-                throw IOException("このアドレスには接続できません")
+                throw IOException(t("このアドレスには接続できません", "Cannot connect to this address"))
             }
         }
 
@@ -81,11 +81,11 @@ internal object NetGuard {
         override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
 
         // 名前から自分で接続する形は使わない（標準の接続は使わない）。使われたら、検査できないので断る。
-        override fun createSocket(host: String?, port: Int): Socket = throw IOException("未対応の接続方法です")
+        override fun createSocket(host: String?, port: Int): Socket = throw IOException(t("未対応の接続方法です", "Unsupported way to connect"))
         override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket =
-            throw IOException("未対応の接続方法です")
-        override fun createSocket(host: InetAddress?, port: Int): Socket = throw IOException("未対応の接続方法です")
+            throw IOException(t("未対応の接続方法です", "Unsupported way to connect"))
+        override fun createSocket(host: InetAddress?, port: Int): Socket = throw IOException(t("未対応の接続方法です", "Unsupported way to connect"))
         override fun createSocket(address: InetAddress?, port: Int, localAddress: InetAddress?, localPort: Int): Socket =
-            throw IOException("未対応の接続方法です")
+            throw IOException(t("未対応の接続方法です", "Unsupported way to connect"))
     }
 }

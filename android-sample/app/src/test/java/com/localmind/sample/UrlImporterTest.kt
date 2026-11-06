@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-class UrlImporterTest {
+class UrlImporterTest : JapaneseUi() {
     @Test
     fun onlyPlainHttpsHostnameUrlsAreAccepted() {
         assertEquals("example.com", UrlImporter.parse("  https://example.com/a/b?x=1#f  ").host)

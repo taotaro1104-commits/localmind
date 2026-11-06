@@ -39,12 +39,12 @@ object MinutesJob {
         if (!running.compareAndSet(false, true)) return null
         if (!ModelGate.tryEnter(ModelGate.MINUTES)) {
             running.set(false)
-            error("質問に回答中です。終わってからお試しください")
+            error(t("質問に回答中です。終わってからお試しください", "A question is being answered. Please try again when it is done"))
         }
         cancelRequested = false
         try {
             // 使うモデルは、ゲートに入ってから決める（切り替え・削除と食い違わないように）
-            val model = checkNotNull(activeModel(context)) { "議事録のモデルがありません。先にダウンロードしてください" }
+            val model = checkNotNull(activeModel(context)) { t("議事録のモデルがありません。先にダウンロードしてください", "There is no model for the minutes. Please download one first") }
             AskJob.release() // 質問画面で開いたままのモデルは閉じる（モデルを同時に 2 つ開かない）
             val opened = MinutesEngine.open(
                 model.file.absolutePath, model.sha256,
@@ -73,20 +73,20 @@ object MinutesJob {
 
     /** 画面に出す文面。根拠の発話の時刻（mm:ss）を、各項目の末尾に付ける。 */
     fun format(report: MinutesReport): String = buildString {
-        section("要約", report.summary)
-        section("決定事項", report.decisions)
-        section("やること", report.actionItems)
-        section("未解決の論点", report.openIssues)
-        if (report.rejected > 0u) append("\n（根拠を確認できなかった ${report.rejected} 件は載せていません）")
+        section(t("要約", "Summary"), report.summary)
+        section(t("決定事項", "Decisions"), report.decisions)
+        section(t("やること", "Action items"), report.actionItems)
+        section(t("未解決の論点", "Open issues"), report.openIssues)
+        if (report.rejected > 0u) append(t("\n（根拠を確認できなかった ${report.rejected} 件は載せていません）", "\n(${report.rejected} items whose source could not be confirmed are not shown)"))
     }.trim()
 
     private fun StringBuilder.section(title: String, items: List<MinutesEntry>) {
         if (items.isEmpty()) return
         append("■ ").append(title).append('\n')
         for (e in items) {
-            append("・").append(e.text)
-            val who = listOfNotNull(e.assignee?.let { "担当: $it" }, e.due?.let { "期限: $it" })
-            if (who.isNotEmpty()) append("（").append(who.joinToString("、")).append("）")
+            append(t("・", "- ")).append(e.text)
+            val who = listOfNotNull(e.assignee?.let { t("担当: $it", "Owner: $it") }, e.due?.let { t("期限: $it", "Due: $it") })
+            if (who.isNotEmpty()) append(t("（", " (")).append(who.joinToString(t("、", ", "))).append(t("）", ")"))
             append(" [").append(e.citations.joinToString(", ") { clock(it.toLong()) }).append("]\n")
         }
         append('\n')
@@ -98,10 +98,10 @@ object MinutesJob {
     }
 
     fun userMessage(e: Throwable, fallback: String): String = when (e) {
-        is LlmException.InvalidInput -> e.message ?: fallback
-        is LlmException.Integrity -> "モデルのファイルが壊れています。置き直してください"
-        is LlmException.Cancelled -> "中止しました"
-        is LlmException.Engine -> e.message ?: fallback
+        is LlmException.InvalidInput -> ErrorText.localize(e.msg) ?: fallback
+        is LlmException.Integrity -> t("モデルのファイルが壊れています。置き直してください", "The model file is damaged. Please put it in place again")
+        is LlmException.Cancelled -> t("中止しました", "Stopped")
+        is LlmException.Engine -> ErrorText.localize(e.msg) ?: fallback
         is IllegalStateException -> e.message ?: fallback
         else -> fallback
     }

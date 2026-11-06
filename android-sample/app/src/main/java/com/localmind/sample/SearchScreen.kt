@@ -32,7 +32,7 @@ class SearchScreen(
     private val dp = context.resources.displayMetrics.density
     private fun px(v: Int) = (v * dp).toInt()
 
-    private val title = text(28f, Palette.white, bold = true).apply { text = "資料を検索" }
+    private val title = text(28f, Palette.white, bold = true).apply { text = t("資料を検索", "Search documents") }
     private val status = text(15f, Palette.white)
     private val banner = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -41,7 +41,7 @@ class SearchScreen(
     }
 
     private val input = EditText(context).apply {
-        hint = "質問を入力"
+        hint = t("質問を入力", "Type your question")
         textSize = 17f
         setTextColor(Palette.ink)
         setHintTextColor(Palette.muted)
@@ -55,13 +55,13 @@ class SearchScreen(
         }
     }
     private val button = TextView(context).apply {
-        text = "検索"
+        text = t("検索", "Search")
         textSize = 16f
         setTextColor(Palette.white)
         setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD))
         gravity = Gravity.CENTER
         setPadding(px(22), px(12), px(22), px(12))
-        contentDescription = "検索を実行する"
+        contentDescription = t("検索を実行する", "Run the search")
         setOnClickListener { submit() }
     }
     private val examples = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -103,12 +103,12 @@ class SearchScreen(
     val view: View get() = scroll
 
     init {
-        setState(Palette.running, "モデルを読み込んでいます（初回は時間がかかります）")
+        setState(Palette.running, t("モデルを読み込んでいます（初回は時間がかかります）", "Loading the model (the first time takes a while)"))
         enable(false)
         docs.enable(false)
-        SAMPLE_QUESTIONS.forEach { examples.addView(exampleRow(it)) }
+        sampleQuestions(sampleLang(context)).forEach { examples.addView(exampleRow(it)) }
         examples.addView(
-            text(13f, Palette.muted).apply { text = "例の質問を押すと、そのまま検索します" },
+            text(13f, Palette.muted).apply { text = t("例の質問を押すと、そのまま検索します", "Tap an example question to search for it") },
             margins(top = 8),
         )
     }
@@ -116,7 +116,7 @@ class SearchScreen(
     /** 準備ができた、または資料が増減した。 */
     fun documents(list: List<DocumentInfo>) {
         docs.setDocuments(list)
-        setState(Palette.pass, "${list.size} 件の資料から探せます。端末の外には送りません。")
+        setState(Palette.pass, t("${list.size} 件の資料から探せます。端末の外には送りません。", "You can search ${list.size} documents. Nothing is sent off the device."))
         enable(true)
         docs.enable(true)
     }
@@ -140,7 +140,7 @@ class SearchScreen(
     }
 
     fun failed(message: String) {
-        setState(Palette.fail, "うまくいきませんでした")
+        setState(Palette.fail, t("うまくいきませんでした", "Something went wrong"))
         enable(false)
         results.removeAllViews()
         results.addView(text(14f, Palette.fail).apply { text = message })
@@ -149,7 +149,7 @@ class SearchScreen(
     fun searching() {
         enable(false)
         results.removeAllViews()
-        results.addView(text(15f, Palette.running).apply { text = "探しています…" }, margins(top = 16))
+        results.addView(text(15f, Palette.running).apply { text = t("探しています…", "Searching…") }, margins(top = 16))
     }
 
     fun show(query: String, r: WorkspaceReport, scope: String? = null) {
@@ -157,13 +157,13 @@ class SearchScreen(
         results.removeAllViews()
         if (scope != null) {
             val label = if (scope.isEmpty()) UNGROUPED_LABEL else scope
-            results.addView(text(13f, Palette.muted).apply { text = "検索の範囲: グループ「$label」" }, margins(top = 12))
+            results.addView(text(13f, Palette.muted).apply { text = t("検索の範囲: グループ「$label」", "Search range: group “$label”") }, margins(top = 12))
         }
         if (!r.found || r.citations.isEmpty()) {
             results.addView(notFound(query), margins(top = 16))
             return
         }
-        results.addView(heading("根拠になる資料（近い順に ${r.citations.size} 件）"), margins(top = 20))
+        results.addView(heading(t("根拠になる資料（近い順に ${r.citations.size} 件）", "Sources (${r.citations.size}, closest first)")), margins(top = 20))
         r.citations.forEachIndexed { i, c -> results.addView(hitRow(i + 1, c, last = i == r.citations.lastIndex)) }
     }
 
@@ -192,7 +192,7 @@ class SearchScreen(
         setPadding(0, px(10), 0, px(10))
         background = underline(Palette.line, px(1))
         isClickable = true
-        contentDescription = "例の質問「$q」で検索する"
+        contentDescription = t("例の質問「$q」で検索する", "Search for the example question “$q”")
         setOnClickListener {
             if (button.isEnabled) {
                 input.setText(q)
@@ -208,9 +208,9 @@ class SearchScreen(
             setColor(Palette.white)
             setStroke(px(2), Palette.fail)
         }
-        addView(text(20f, Palette.fail, bold = true).apply { text = "資料には見つかりません" })
+        addView(text(20f, Palette.fail, bold = true).apply { text = t("資料には見つかりません", "Not found in your documents") })
         addView(
-            text(14f, Palette.muted).apply { text = "「$query」に答えられる記述は、登録した資料にありませんでした。" },
+            text(14f, Palette.muted).apply { text = t("「$query」に答えられる記述は、登録した資料にありませんでした。", "None of the registered documents has a passage that answers “$query”.") },
             margins(top = 6),
         )
     }
@@ -251,8 +251,8 @@ class SearchScreen(
     /** 出典の位置。見出しの並び（文書の題名と同じ先頭は省く）と、原本の行番号。 */
     private fun where(c: Citation): String {
         val path = c.headingPath.dropWhile { it == c.title }.joinToString(" › ")
-        val lines = if (c.startLine == c.endLine) "${c.startLine} 行目" else "${c.startLine}〜${c.endLine} 行目"
-        return if (path.isEmpty()) lines else "$path ・ $lines"
+        val lines = if (c.startLine == c.endLine) t("${c.startLine} 行目", "line ${c.startLine}") else t("${c.startLine}〜${c.endLine} 行目", "lines ${c.startLine}–${c.endLine}")
+        return if (path.isEmpty()) lines else t("$path ・ $lines", "$path · $lines")
     }
 
     private fun underline(color: Int, thickness: Int) = LayerDrawable(

@@ -17,7 +17,7 @@ private enum class Overall { RUNNING, PASS, FAIL }
 private val DURATION = Regex("""\s*\((\d+)ms\)$""")
 
 private fun formatDuration(ms: Long): String =
-    if (ms >= 1000) String.format("%.1f 秒", ms / 1000.0) else "$ms ms"
+    if (ms >= 1000) String.format(t("%.1f 秒", "%.1f s"), ms / 1000.0) else "$ms ms"
 
 /**
  * 自己テストの結果画面。上に全体の状態（色の帯と、1 項目 1 目盛りのテープ）、下に段階ごとの一覧を置く。
@@ -83,7 +83,7 @@ class Dashboard(private val context: Context) {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, px(14), 0, px(14))
             addView(mark("…", Palette.running), LinearLayout.LayoutParams(px(22), px(22)))
-            addView(label(15f, Palette.running).apply { text = "実行中…（実モデルは読み込みに時間がかかります）" }, lp(left = 14))
+            addView(label(15f, Palette.running).apply { text = t("実行中…（実モデルは読み込みに時間がかかります）", "Running… (loading the real model takes a while)") }, lp(left = 14))
         }
         section.addView(row)
         spinnerRow = row
@@ -122,7 +122,7 @@ class Dashboard(private val context: Context) {
     /** 結果ではなく、案内だけを出す（自己テストを再実行できないとき）。 */
     fun notice(message: String) {
         running = false
-        headline.text = "実行済みです"
+        headline.text = t("実行済みです", "Already run")
         summary.text = message
     }
 
@@ -132,30 +132,30 @@ class Dashboard(private val context: Context) {
         render()
         if (failed == 0) {
             val open = label(16f, Palette.pass, bold = true).apply {
-                text = "資料を検索する"
+                text = t("資料を検索する", "Search documents")
                 gravity = Gravity.CENTER
                 setPadding(px(22), px(13), px(22), px(13))
                 background = GradientDrawable().apply { setColor(Palette.white) }
                 isClickable = true
-                contentDescription = "検索画面を開く"
+                contentDescription = t("検索画面を開く", "Open the search screen")
                 setOnClickListener { onOpenSearch() }
             }
             val record = label(16f, Palette.pass, bold = true).apply {
-                text = "録音する"
+                text = t("録音する", "Record")
                 gravity = Gravity.CENTER
                 setPadding(px(22), px(13), px(22), px(13))
                 background = GradientDrawable().apply { setColor(Palette.white) }
                 isClickable = true
-                contentDescription = "録音画面を開く"
+                contentDescription = t("録音画面を開く", "Open the recording screen")
                 setOnClickListener { onOpenRecord() }
             }
             val ask = label(16f, Palette.pass, bold = true).apply {
-                text = "AI に質問する"
+                text = t("AI に質問する", "Ask the AI")
                 gravity = Gravity.CENTER
                 setPadding(px(22), px(13), px(22), px(13))
                 background = GradientDrawable().apply { setColor(Palette.white) }
                 isClickable = true
-                contentDescription = "質問画面を開く"
+                contentDescription = t("質問画面を開く", "Open the question screen")
                 setOnClickListener { onOpenAsk() }
             }
             val buttons = LinearLayout(context).apply {
@@ -175,16 +175,16 @@ class Dashboard(private val context: Context) {
             else -> Overall.PASS
         }
         val (color, text) = when (state) {
-            Overall.RUNNING -> Palette.running to "確認しています"
-            Overall.PASS -> Palette.pass to "すべて合格"
-            Overall.FAIL -> Palette.fail to "失敗があります"
+            Overall.RUNNING -> Palette.running to t("確認しています", "Checking")
+            Overall.PASS -> Palette.pass to t("すべて合格", "All checks passed")
+            Overall.FAIL -> Palette.fail to t("失敗があります", "Some checks failed")
         }
         banner.setBackgroundColor(color)
         headline.text = text
         summary.text = when {
-            failed > 0 -> "$failed 項目が失敗、$passed 項目が合格"
-            passed == 0 -> "端末の中だけで検索を試しています"
-            else -> "$passed 項目が合格"
+            failed > 0 -> t("$failed 項目が失敗、$passed 項目が合格", "$failed failed, $passed passed")
+            passed == 0 -> t("端末の中だけで検索を試しています", "Trying search on the device only")
+            else -> t("$passed 項目が合格", "$passed passed")
         }
     }
 
@@ -219,7 +219,7 @@ class Dashboard(private val context: Context) {
             // 合格した段階だけ畳める。失敗がある段階は、いつも開いたままにする。
             if (entry.passed) {
                 isClickable = true
-                contentDescription = "$title の結果を開閉する"
+                contentDescription = t("$title の結果を開閉する", "Show or hide the results of $title")
                 setOnClickListener { setOpen(entry, entry.rows.visibility != View.VISIBLE) }
             } else {
                 toggle.visibility = View.GONE

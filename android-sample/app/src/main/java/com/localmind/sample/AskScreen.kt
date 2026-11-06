@@ -33,8 +33,8 @@ class AskScreen(
     private val banner = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(Palette.ink)
-        addView(ui.text(28f, Palette.white, bold = true).apply { text = "AI に質問" })
-        addView(ui.text(15f, Palette.white).apply { text = "資料は読み込まず、質問だけに答えます" }, ui.lp(top = 4))
+        addView(ui.text(28f, Palette.white, bold = true).apply { text = t("AI に質問", "Ask the AI") })
+        addView(ui.text(15f, Palette.white).apply { text = t("資料は読み込まず、質問だけに答えます", "It answers your question without loading any document") }, ui.lp(top = 4))
     }
     private val modelChip = ui.text(14f, Palette.white, bold = true).apply {
         setPadding(px(14), px(8), px(14), px(8))
@@ -44,15 +44,15 @@ class AskScreen(
     }
 
     private val tiles = mapOf(
-        AskMode.LOCAL to tile("端末の中だけで答える", "通信しません。質問は端末の外に出ません。新しい出来事は知らないことがあります。"),
+        AskMode.LOCAL to tile(t("端末の中だけで答える", "Answer on the device only"), t("通信しません。質問は端末の外に出ません。新しい出来事は知らないことがあります。", "No network use. Your question never leaves the device. It may not know about recent events.")),
         AskMode.AUTO to tile(
-            "必要なら Wikipedia を検索して答える",
-            "検索が必要と判断したときだけ、AI が作った短い検索語を、送る前にお見せして確認します。確認できた語だけを Wikipedia（日本語版）へ送ります。",
+            t("必要なら Wikipedia を検索して答える", "Search Wikipedia if needed"),
+            t("検索が必要と判断したときだけ、AI が作った短い検索語を、送る前にお見せして確認します。確認できた語だけを Wikipedia（日本語版）へ送ります。", "Only when a search seems needed, the AI makes a few short search words and shows them to you first. Only the words you confirm are sent to Wikipedia (Japanese edition)."),
         ),
     )
 
     private val question = EditText(context).apply {
-        hint = "質問を入力"
+        hint = t("質問を入力", "Type your question")
         textSize = 16f
         setTextColor(Palette.ink)
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -61,10 +61,10 @@ class AskScreen(
         filters = arrayOf(InputFilter.LengthFilter(maxQuestionChars().toInt()))
         setPadding(px(14), px(12), px(14), px(12))
         background = GradientDrawable().apply { setColor(Palette.white); setStroke(px(1), Palette.line) }
-        contentDescription = "質問"
+        contentDescription = t("質問", "Question")
     }
 
-    private val action = ui.button("質問する", Palette.ink) { if (running) onCancel() else submit() }
+    private val action = ui.button(t("質問する", "Ask"), Palette.ink) { if (running) onCancel() else submit() }
     private val status = ui.text(14f, Palette.muted).apply {
         accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         visibility = View.GONE
@@ -82,14 +82,14 @@ class AskScreen(
         addView(note, ui.lp(top = 10))
         addView(sources, ui.lp(top = 14))
         addView(
-            ui.text(13f, Palette.muted).apply { text = "AI の回答は誤りを含むことがあります。重要なことは、ご自身で確かめてください。" },
+            ui.text(13f, Palette.muted).apply { text = t("AI の回答は誤りを含むことがあります。重要なことは、ご自身で確かめてください。", "AI answers can be wrong. Please check anything important yourself.") },
             ui.lp(top = 16),
         )
     }
 
     private val body = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        addView(ui.text(15f, Palette.ink, bold = true).apply { text = "答え方" })
+        addView(ui.text(15f, Palette.ink, bold = true).apply { text = t("答え方", "How to answer") })
         AskMode.entries.forEach { addView(tiles.getValue(it), ui.lp(top = 8)) }
         addView(question, ui.lp(top = 20))
         addView(action, ui.lp(top = 12))
@@ -146,14 +146,14 @@ class AskScreen(
 
     /** いま使っているモデルの名前を出す（押すと切り替え画面）。無ければ null。 */
     fun setModel(label: String?) {
-        modelChip.text = if (label == null) "AI モデル: 未取得 ▾" else "AI モデル: $label ▾"
-        modelChip.contentDescription = (if (label == null) "AI モデルは未取得。" else "いまの AI モデルは $label。") + "押すと切り替える"
+        modelChip.text = if (label == null) t("AI モデル: 未取得 ▾", "AI model: none yet ▾") else t("AI モデル: $label ▾", "AI model: $label ▾")
+        modelChip.contentDescription = (if (label == null) t("AI モデルは未取得。", "No AI model yet.") else t("いまの AI モデルは $label。", "The current AI model is $label.")) + t("押すと切り替える", "Tap to switch")
     }
 
     private fun submit() {
         val q = question.text.toString().trim()
         if (q.isEmpty()) {
-            question.error = "質問を入力してください"
+            question.error = t("質問を入力してください", "Please type a question")
             return
         }
         onAsk(q, mode)
@@ -162,7 +162,7 @@ class AskScreen(
     /** 実行中は、ボタンを「中止」にして、入力と答え方の変更を止める。 */
     fun setRunning(on: Boolean) {
         running = on
-        action.text = if (on) "中止" else "質問する"
+        action.text = if (on) t("中止", "Stop") else t("質問する", "Ask")
         action.background = ui.fill(if (on) Palette.fail else Palette.ink)
         action.contentDescription = action.text
         question.isEnabled = !on
@@ -179,19 +179,19 @@ class AskScreen(
     /** 回答を出す。送った検索語があれば、いちばん上の帯に出す（データが端末の外へ出たかどうかを一目で分けるため）。 */
     fun showAnswer(outcome: AskOutcome) {
         val sent = outcome.searchedQuery
-        route.text = if (sent == null) "端末の中だけで作成" else "Wikipedia に「$sent」を送って作成"
+        route.text = if (sent == null) t("端末の中だけで作成", "Made on the device only") else t("Wikipedia に「$sent」を送って作成", "Made after sending “$sent” to Wikipedia")
         route.background = ui.fill(if (sent == null) Palette.pass else Palette.running)
         answer.text = outcome.report.text
         note.text = outcome.note.orEmpty()
         note.visibility = if (outcome.note == null) View.GONE else View.VISIBLE
         sources.removeAllViews()
         if (outcome.report.sources.isNotEmpty()) {
-            sources.addView(ui.text(15f, Palette.ink, bold = true).apply { text = "出典" })
+            sources.addView(ui.text(15f, Palette.ink, bold = true).apply { text = t("出典", "Sources") })
             outcome.report.sources.forEachIndexed { i, s ->
                 val cited = (i + 1).toUInt() in outcome.report.cited
                 sources.addView(
                     ui.text(14f, Palette.ink, bold = true).apply {
-                        text = "[${i + 1}] ${s.title}" + (if (cited) "" else "（回答では使っていません）")
+                        text = "[${i + 1}] ${s.title}" + (if (cited) "" else t("（回答では使っていません）", "(not used in the answer)"))
                         setTextIsSelectable(true)
                     },
                     ui.lp(top = 8),

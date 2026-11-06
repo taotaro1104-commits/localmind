@@ -7,7 +7,7 @@ internal data class DocSection(val key: String, val docs: List<DocumentInfo>) {
     val label: String get() = if (key.isEmpty()) UNGROUPED_LABEL else key
 }
 
-internal const val UNGROUPED_LABEL = "未分類"
+internal val UNGROUPED_LABEL: String get() = t("未分類", "Ungrouped")
 
 /** 資料の一覧をグループ（資料に付けた名前）ごとにまとめる。表示の組み立てだけで、状態は持たない。 */
 internal object DocGroups {

@@ -39,16 +39,16 @@ class DocsPanel(
     private val chips = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val message = text(14f, Palette.muted)
-    private val groupInput = field("追加先のグループ（任意。空なら未分類）", multiline = false).apply {
+    private val groupInput = field(t("追加先のグループ（任意。空なら未分類）", "Group to add to (optional; empty means ungrouped)"), multiline = false).apply {
         filters = arrayOf(android.text.InputFilter.LengthFilter(MAX_GROUP_CHARS))
     }
-    private val titleInput = field("題名（例: 出張規程）", multiline = false)
-    private val bodyInput = field("本文（Markdown 可。「# 見出し」を付けると、出典に見出しが出ます）", multiline = true)
-    private val urlInput = field("https://… のページの URL", multiline = false).apply {
+    private val titleInput = field(t("題名（例: 出張規程）", "Title (e.g. Travel rules)"), multiline = false)
+    private val bodyInput = field(t("本文（Markdown 可。「# 見出し」を付けると、出典に見出しが出ます）", "Text (Markdown is fine. A “# heading” shows up as the heading in sources)"), multiline = true)
+    private val urlInput = field(t("https://… のページの URL", "URL of an https:// page"), multiline = false).apply {
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
     }
-    private val addButton = button("資料に追加", "資料に追加する") { submit() }
-    private val urlButton = button("URL から取り込む", "URL のページを資料に追加する") { submitUrl() }
+    private val addButton = button(t("資料に追加", "Add to documents"), t("資料に追加する", "Add to the documents")) { submit() }
+    private val urlButton = button(t("URL から取り込む", "Import from the URL"), t("URL のページを資料に追加する", "Add the page at the URL to the documents")) { submitUrl() }
     private val form = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         visibility = View.GONE
@@ -62,20 +62,20 @@ class DocsPanel(
         addView(urlInput)
         addView(
             text(13f, Palette.muted).apply {
-                text = "ページの本文だけを取り込みます（HTML・テキスト・Markdown）。このアプリが通信するのは、いま入れた URL へ 1 回だけです。"
+                text = t("ページの本文だけを取り込みます（HTML・テキスト・Markdown）。このアプリが通信するのは、いま入れた URL へ 1 回だけです。", "Only the main text of the page is imported (HTML, text or Markdown). The app connects only once, to the URL you just entered.")
             },
             lp(top = 6),
         )
         addView(urlButton, lp(top = 12, wrap = true))
     }
-    private val toggle = opener("＋ 文章を入力して追加", "－ 閉じる", form)
-    private val urlToggle = opener("＋ URL から追加", "－ 閉じる", urlForm)
+    private val toggle = opener(t("＋ 文章を入力して追加", "＋ Type text to add"), t("－ 閉じる", "－ Close"), form)
+    private val urlToggle = opener(t("＋ URL から追加", "＋ Add from a URL"), t("－ 閉じる", "－ Close"), urlForm)
 
     private val pick = text(16f, Palette.pass, bold = true).apply {
-        text = "＋ ファイルから追加（テキスト・Markdown）"
+        text = t("＋ ファイルから追加（テキスト・Markdown）", "＋ Add from a file (text or Markdown)")
         setPadding(0, px(14), 0, px(14))
         isClickable = true
-        contentDescription = "ファイルを選んで資料に追加する"
+        contentDescription = t("ファイルを選んで資料に追加する", "Choose a file to add as a document")
         setOnClickListener { if (addButton.isEnabled) onPickFile() }
     }
 
@@ -84,7 +84,7 @@ class DocsPanel(
         addView(heading.apply { setPadding(0, 0, 0, px(8)); background = underline(Palette.ink, px(2)) })
         addView(chips, lp(top = 4))
         addView(list)
-        addView(text(15f, Palette.ink, bold = true).apply { text = "資料を追加" }, lp(top = 20))
+        addView(text(15f, Palette.ink, bold = true).apply { text = t("資料を追加", "Add documents") }, lp(top = 20))
         addView(groupInput, lp(top = 8))
         addView(pick)
         addView(urlToggle)
@@ -111,12 +111,12 @@ class DocsPanel(
 
     private fun render() {
         val sections = DocGroups.sections(docs)
-        heading.text = "登録した資料（${docs.size} 件）"
+        heading.text = t("登録した資料（${docs.size} 件）", "Documents (${docs.size})")
         renderChips(sections)
         list.removeAllViews()
         if (docs.isEmpty()) {
             list.addView(text(14f, Palette.muted).apply {
-                text = "資料がありません。下から追加してください。"
+                text = t("資料がありません。下から追加してください。", "There are no documents. Add some below.")
                 setPadding(0, px(12), 0, px(12))
             })
             return
@@ -131,11 +131,11 @@ class DocsPanel(
         val only = selected?.let { key -> sections.firstOrNull { it.key == key } }
         if (only != null) {
             list.addView(
-                text(13f, Palette.muted).apply { text = "検索は「${only.label}」の資料に絞られます（「すべて」に戻すと、全部から探します）。" },
+                text(13f, Palette.muted).apply { text = t("検索は「${only.label}」の資料に絞られます（「すべて」に戻すと、全部から探します）。", "Search is limited to the documents in “${only.label}” (go back to “All” to search everything).") },
                 lp(top = 12),
             )
             list.addView(
-                action("「${only.label}」の資料をすべて削除（${only.docs.size} 件）", Palette.fail, "グループ「${only.label}」の資料をすべて削除する") {
+                action(t("「${only.label}」の資料をすべて削除（${only.docs.size} 件）", "Delete all documents in “${only.label}” (${only.docs.size})"), Palette.fail, t("グループ「${only.label}」の資料をすべて削除する", "Delete all documents in the group “${only.label}”")) {
                     onRemoveGroup(only.key, only.docs)
                 }.apply { setPadding(0, px(14), 0, px(10)) },
             )
@@ -151,8 +151,8 @@ class DocsPanel(
             isHorizontalScrollBarEnabled = false
             addView(row)
         }
-        row.addView(chip("すべて（${docs.size}）", selected == null) { select(null) })
-        sections.forEach { s -> row.addView(chip("${s.label}（${s.docs.size}）", selected == s.key) { select(s.key) }) }
+        row.addView(chip(t("すべて（${docs.size}）", "All (${docs.size})"), selected == null) { select(null) })
+        sections.forEach { s -> row.addView(chip(t("${s.label}（${s.docs.size}）", "${s.label} (${s.docs.size})"), selected == s.key) { select(s.key) }) }
         chips.addView(wrapper)
     }
 
@@ -173,13 +173,13 @@ class DocsPanel(
         }
         isClickable = true
         isSelected = on
-        contentDescription = "グループ「$label」に切り替える" + if (on) "（選択中）" else ""
+        contentDescription = t("グループ「$label」に切り替える", "Switch to the group “$label”") + if (on) t("（選択中）", "(selected)") else ""
         setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(8) }
     }
 
     private fun sectionHeader(s: DocSection) = text(14f, Palette.muted, bold = true).apply {
-        text = "${s.label}（${s.docs.size} 件）"
+        text = t("${s.label}（${s.docs.size} 件）", "${s.label} (${s.docs.size})")
         setPadding(0, px(14), 0, px(6))
         background = underline(Palette.line, px(1))
     }
@@ -212,8 +212,8 @@ class DocsPanel(
         val title = titleInput.text.toString().trim()
         val body = bodyInput.text.toString()
         when {
-            title.isEmpty() -> report("題名を入力してください。", ok = false)
-            body.isBlank() -> report("本文を入力してください。", ok = false)
+            title.isEmpty() -> report(t("題名を入力してください。", "Please type a title."), ok = false)
+            body.isBlank() -> report(t("本文を入力してください。", "Please type the text."), ok = false)
             else -> onAdd(title, body)
         }
     }
@@ -221,7 +221,7 @@ class DocsPanel(
     private fun submitUrl() {
         if (!urlButton.isEnabled) return
         val url = urlInput.text.toString().trim()
-        if (url.isEmpty()) report("URL を入力してください。", ok = false) else onAddUrl(url)
+        if (url.isEmpty()) report(t("URL を入力してください。", "Please type a URL."), ok = false) else onAddUrl(url)
     }
 
     private fun row(d: DocumentInfo, last: Boolean) = LinearLayout(context).apply {
@@ -232,15 +232,15 @@ class DocsPanel(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text(16f, Palette.ink, bold = true).apply { text = d.title })
-                val kind = if (d.format == DocFormat.MARKDOWN) "Markdown" else "テキスト"
-                addView(text(13f, Palette.muted).apply { text = "$kind ・ 断片 ${d.chunks} 件" }, lp(top = 2))
+                val kind = if (d.format == DocFormat.MARKDOWN) "Markdown" else t("テキスト", "Text")
+                addView(text(13f, Palette.muted).apply { text = t("$kind ・ 断片 ${d.chunks} 件", "$kind · ${d.chunks} chunks") }, lp(top = 2))
             },
             LinearLayout.LayoutParams(0, -2, 1f),
         )
-        addView(action("グループ", Palette.pass, "「${d.title}」のグループを変える") {
+        addView(action(t("グループ", "Group"), Palette.pass, t("「${d.title}」のグループを変える", "Change the group of “${d.title}”")) {
             pickGroup(context, d.group, DocGroups.names(docs)) { onSetGroup(d.id, it) }
         })
-        addView(action("削除", Palette.fail, "「${d.title}」を削除する") { onRemove(d.id, d.title) })
+        addView(action(t("削除", "Delete"), Palette.fail, t("「${d.title}」を削除する", "Delete “${d.title}”")) { onRemove(d.id, d.title) })
     }
 
     private fun action(label: String, color: Int, description: String, onClick: () -> Unit) = text(14f, color).apply {
@@ -265,7 +265,7 @@ class DocsPanel(
         text = closed
         setPadding(0, px(14), 0, px(14))
         isClickable = true
-        contentDescription = "$closed（フォームを開閉する）"
+        contentDescription = t("$closed（フォームを開閉する）", "$closed (opens or closes the form)")
         setOnClickListener {
             val show = target.visibility != View.VISIBLE
             target.visibility = if (show) View.VISIBLE else View.GONE

@@ -71,7 +71,7 @@ class RecordActivity : Activity() {
         if (error != null) screen.note(error, ok = false)
         if (wasActive && !state.active) {
             refresh()
-            if (error == null) screen.note("録音を保存しました", ok = true)
+            if (error == null) screen.note(t("録音を保存しました", "Recording saved"), ok = true)
         }
         wasActive = state.active
         ticker.postDelayed(::tick, 1000)
@@ -80,7 +80,7 @@ class RecordActivity : Activity() {
     private fun toggle() {
         if (RecorderState.active) {
             RecorderService.stop(this)
-            screen.note("止めています…（最後の分を保存しています）", ok = true)
+            screen.note(t("止めています…（最後の分を保存しています）", "Stopping… (saving the last part)"), ok = true)
         } else {
             requestPermissionsThenStart()
         }
@@ -102,8 +102,8 @@ class RecordActivity : Activity() {
         val denied = permissions.filterIndexed { i, _ -> grantResults.getOrNull(i) != PackageManager.PERMISSION_GRANTED }
         when {
             denied.isEmpty() -> confirmConsentThenStart()
-            Manifest.permission.RECORD_AUDIO in denied -> screen.note("マイクの許可がないと、録音できません", ok = false)
-            else -> screen.note("録音中の通知を許可してください（録音していることを、いつでも分かるようにするためです）", ok = false)
+            Manifest.permission.RECORD_AUDIO in denied -> screen.note(t("マイクの許可がないと、録音できません", "Recording is not possible without microphone permission"), ok = false)
+            else -> screen.note(t("録音中の通知を許可してください（録音していることを、いつでも分かるようにするためです）", "Please allow the recording notification (so that you can always tell it is recording)"), ok = false)
         }
     }
 
@@ -114,10 +114,10 @@ class RecordActivity : Activity() {
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("録音を始める前の確認")
-            .setMessage("録音に参加する全員から、録音することの同意を得ていますか？\n\n同意を得ていない録音は、始められません。")
-            .setPositiveButton("同意を得た。録音を始める") { _, _ -> RecorderService.start(this, consentConfirmed = true) }
-            .setNegativeButton("キャンセル", null)
+            .setTitle(t("録音を始める前の確認", "Before you start recording"))
+            .setMessage(t("録音に参加する全員から、録音することの同意を得ていますか？\n\n同意を得ていない録音は、始められません。", "Do you have the consent of everyone taking part to record them?\n\nA recording without consent cannot be started."))
+            .setPositiveButton(t("同意を得た。録音を始める", "I have consent. Start recording")) { _, _ -> RecorderService.start(this, consentConfirmed = true) }
+            .setNegativeButton(t("キャンセル", "Cancel"), null)
             .show()
     }
 
@@ -128,10 +128,10 @@ class RecordActivity : Activity() {
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("同意の確認をやめますか？")
-            .setMessage("録音を始めるたびの確認がなくなります。参加者の同意を得る責任は、あなたにあります。")
-            .setPositiveButton("確認をやめる") { _, _ -> prefs.confirmConsent = false }
-            .setNegativeButton("キャンセル") { _, _ -> screen.setSettings(prefs.confirmConsent, prefs.retentionDays) }
+            .setTitle(t("同意の確認をやめますか？", "Stop asking for confirmation?"))
+            .setMessage(t("録音を始めるたびの確認がなくなります。参加者の同意を得る責任は、あなたにあります。", "You will no longer be asked each time you start recording. You are responsible for getting the participants' consent."))
+            .setPositiveButton(t("確認をやめる", "Stop asking")) { _, _ -> prefs.confirmConsent = false }
+            .setNegativeButton(t("キャンセル", "Cancel")) { _, _ -> screen.setSettings(prefs.confirmConsent, prefs.retentionDays) }
             .setOnCancelListener { screen.setSettings(prefs.confirmConsent, prefs.retentionDays) }
             .show()
     }
@@ -147,14 +147,14 @@ class RecordActivity : Activity() {
 
     private fun confirmDelete(r: RecordingInfo) {
         if (RecorderState.active) {
-            screen.note("録音中は削除できません。止めてからお試しください", ok = false)
+            screen.note(t("録音中は削除できません。止めてからお試しください", "You cannot delete while recording. Stop first and try again"), ok = false)
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("この録音を削除しますか？")
-            .setMessage("音声が端末から消えます。元に戻せません。")
-            .setPositiveButton("削除") { _, _ -> delete(r.id) }
-            .setNegativeButton("キャンセル", null)
+            .setTitle(t("この録音を削除しますか？", "Delete this recording?"))
+            .setMessage(t("音声が端末から消えます。元に戻せません。", "The audio will be removed from the device. It cannot be undone."))
+            .setPositiveButton(t("削除", "Delete")) { _, _ -> delete(r.id) }
+            .setNegativeButton(t("キャンセル", "Cancel"), null)
             .show()
     }
 
@@ -162,8 +162,8 @@ class RecordActivity : Activity() {
         thread(name = "lm-delete") {
             val result = runCatching { openRecordingStore(applicationContext).deleteRecording(id) }
             runOnUiThread {
-                result.onSuccess { screen.note("削除しました", ok = true) }
-                    .onFailure { screen.note(userMessage(it, debuggable, "削除できませんでした"), ok = false) }
+                result.onSuccess { screen.note(t("削除しました", "Deleted"), ok = true) }
+                    .onFailure { screen.note(userMessage(it, debuggable, t("削除できませんでした", "Could not delete")), ok = false) }
                 refresh()
             }
         }
@@ -173,45 +173,45 @@ class RecordActivity : Activity() {
     private fun transcribe(r: RecordingInfo) {
         if (SpeechJob.isRunning) {
             SpeechJob.cancel()
-            screen.note("中止しています…（今の処理が止まるまで待ちます）", ok = true)
+            screen.note(t("中止しています…（今の処理が止まるまで待ちます）", "Stopping… (waiting for the current work to stop)"), ok = true)
             return
         }
         if (RecorderState.active || MinutesJob.isRunning || AskJob.isRunning) {
-            screen.note("録音中は文字起こしできません。止めてからお試しください", ok = false)
+            screen.note(t("録音中は文字起こしできません。止めてからお試しください", "You cannot transcribe while recording. Stop first and try again"), ok = false)
             return
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // 実行中は画面を消さない
-        screen.note("モデルを読み込んでいます…（もう一度押すと中止）", ok = true)
+        screen.note(t("モデルを読み込んでいます…（もう一度押すと中止）", "Loading the model… (tap again to stop)"), ok = true)
         thread(name = "lm-speech") {
             val result = runCatching {
                 SpeechJob.run(
                     applicationContext, openRecordingStore(applicationContext), r.id,
                 ) { done, total ->
-                    runOnUiThread { screen.note("文字起こし中… $done / $total（もう一度押すと中止）", ok = true) }
+                    runOnUiThread { screen.note(t("文字起こし中… $done / $total（もう一度押すと中止）", "Transcribing… $done / $total (tap again to stop)"), ok = true) }
                 }
             }
             runOnUiThread {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 if (isDestroyed) return@runOnUiThread
                 result.onSuccess { if (it != null) showTranscript(it, r.id) }
-                    .onFailure { screen.note(userMessage(it, debuggable, "文字起こしできませんでした"), ok = false) }
+                    .onFailure { screen.note(userMessage(it, debuggable, t("文字起こしできませんでした", "Could not transcribe")), ok = false) }
             }
         }
     }
 
     private fun showTranscript(result: uniffi.lm_ffi.SpeechResult, recordingId: String) {
         val notes = buildList {
-            if (result.cancelled) add("中止しました（それまでの結果です）")
-            if (result.skippedChunks > 0u) add("読めない区間が ${result.skippedChunks} 個あり、その部分は含まれません")
+            if (result.cancelled) add(t("中止しました（それまでの結果です）", "Stopped (this is the result so far)"))
+            if (result.skippedChunks > 0u) add(t("読めない区間が ${result.skippedChunks} 個あり、その部分は含まれません", "${result.skippedChunks} parts could not be read and are not included"))
         }
-        screen.note(notes.firstOrNull() ?: "文字起こしが終わりました", ok = notes.isEmpty() || result.cancelled)
-        val body = if (result.segments.isEmpty()) "発話が見つかりませんでした。" else SpeechJob.format(result.segments)
+        screen.note(notes.firstOrNull() ?: t("文字起こしが終わりました", "Transcription finished"), ok = notes.isEmpty() || result.cancelled)
+        val body = if (result.segments.isEmpty()) t("発話が見つかりませんでした。", "No speech was found.") else SpeechJob.format(result.segments)
         val dialog = AlertDialog.Builder(this)
-            .setTitle("文字起こしの結果")
+            .setTitle(t("文字起こしの結果", "Transcript"))
             .setMessage((notes + body).joinToString(NL2))
-            .setPositiveButton("閉じる", null)
+            .setPositiveButton(t("閉じる", "Close"), null)
         if (result.segments.isNotEmpty()) {
-            dialog.setNeutralButton("議事録を作る") { _, _ -> makeMinutes(recordingId, result.segments) }
+            dialog.setNeutralButton(t("議事録を作る", "Make minutes")) { _, _ -> makeMinutes(recordingId, result.segments) }
         }
         dialog.show()
     }
@@ -220,11 +220,11 @@ class RecordActivity : Activity() {
     private fun makeMinutes(recordingId: String, segments: List<uniffi.lm_ffi.SpokenSegment>) {
         if (MinutesJob.isRunning) {
             MinutesJob.cancel()
-            screen.note("中止しています…", ok = true)
+            screen.note(t("中止しています…", "Stopping…"), ok = true)
             return
         }
         if (SpeechJob.isRunning || RecorderState.active || AskJob.isRunning) {
-            screen.note("文字起こし・録音・質問への回答が終わってからお試しください", ok = false)
+            screen.note(t("文字起こし・録音・質問への回答が終わってからお試しください", "Please wait until transcription, recording or answering a question is finished"), ok = false)
             return
         }
         if (MinutesJob.activeModel(applicationContext) == null) {
@@ -232,7 +232,7 @@ class RecordActivity : Activity() {
             return
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        screen.note("議事録を作っています…（数分かかります）", ok = true)
+        screen.note(t("議事録を作っています…（数分かかります）", "Making the minutes… (this takes a few minutes)"), ok = true)
         thread(name = "lm-minutes") {
             val result = runCatching { MinutesJob.run(applicationContext, recordingId, segments) }
             runOnUiThread {
@@ -241,13 +241,13 @@ class RecordActivity : Activity() {
                 result.onSuccess { report -> if (report != null) showMinutes(report) }
                     .onFailure {
                         if (debuggable) android.util.Log.w("LMSample", "minutes failure: $it", it)
-                        val msg = MinutesJob.userMessage(it, "議事録を作れませんでした")
+                        val msg = MinutesJob.userMessage(it, t("議事録を作れませんでした", "Could not make the minutes"))
                         screen.note(msg, ok = false)
                         // モデルが読み込めないときは、モデルを選び直せるようにする
                         if (it is uniffi.lm_llm_ffi.LlmException.Integrity || it is uniffi.lm_llm_ffi.LlmException.Engine) {
-                            AlertDialog.Builder(this).setTitle("議事録を作れませんでした").setMessage(msg)
-                                .setPositiveButton("閉じる", null)
-                                .setNeutralButton("モデルを変更") { _, _ -> showModelSwitcher(this) }
+                            AlertDialog.Builder(this).setTitle(t("議事録を作れませんでした", "Could not make the minutes")).setMessage(msg)
+                                .setPositiveButton(t("閉じる", "Close"), null)
+                                .setNeutralButton(t("モデルを変更", "Change model")) { _, _ -> showModelSwitcher(this) }
                                 .show()
                         }
                     }
@@ -256,20 +256,20 @@ class RecordActivity : Activity() {
     }
 
     private fun showMinutes(report: uniffi.lm_llm_ffi.MinutesReport) {
-        screen.note("議事録を保存しました", ok = true)
+        screen.note(t("議事録を保存しました", "Minutes saved"), ok = true)
         val text = MinutesJob.format(report)
         AlertDialog.Builder(this)
-            .setTitle("議事録")
-            .setMessage(if (text.isEmpty()) "項目を抽出できませんでした。" else text)
-            .setPositiveButton("閉じる", null)
-            .setNegativeButton("モデルを変更") { _, _ -> showModelSwitcher(this) }
-            .setNeutralButton("共有") { _, _ ->
+            .setTitle(t("議事録", "Minutes"))
+            .setMessage(if (text.isEmpty()) t("項目を抽出できませんでした。", "No items could be extracted.") else text)
+            .setPositiveButton(t("閉じる", "Close"), null)
+            .setNegativeButton(t("モデルを変更", "Change model")) { _, _ -> showModelSwitcher(this) }
+            .setNeutralButton(t("共有", "Share")) { _, _ ->
                 startActivity(
                     android.content.Intent.createChooser(
                         android.content.Intent(android.content.Intent.ACTION_SEND)
                             .setType("text/plain")
-                            .putExtra(android.content.Intent.EXTRA_TEXT, text + NL2 + "※AI が自動で作った議事録です。原文と照合してください。"),
-                        "議事録を共有",
+                            .putExtra(android.content.Intent.EXTRA_TEXT, text + NL2 + t("※AI が自動で作った議事録です。原文と照合してください。", "* These minutes were made automatically by AI. Please check them against the original.")),
+                        t("議事録を共有", "Share the minutes"),
                     ),
                 )
             }
@@ -283,7 +283,7 @@ class RecordActivity : Activity() {
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
                 result.onSuccess { screen.setRecordings(it, deletable = !RecorderState.active) }
-                    .onFailure { screen.note(userMessage(it, debuggable, "録音の一覧を読めませんでした"), ok = false) }
+                    .onFailure { screen.note(userMessage(it, debuggable, t("録音の一覧を読めませんでした", "Could not read the list of recordings")), ok = false) }
             }
         }
     }

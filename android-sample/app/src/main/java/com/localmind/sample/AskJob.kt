@@ -96,18 +96,18 @@ object AskJob {
         confirmSearch: (String) -> Boolean,
     ): AskOutcome? {
         if (!ModelGate.tryEnter(ModelGate.ASK)) {
-            check(!ModelGate.isHeldBy(ModelGate.MINUTES)) { "議事録を作成中です。終わってからお試しください" }
+            check(!ModelGate.isHeldBy(ModelGate.MINUTES)) { t("議事録を作成中です。終わってからお試しください", "Minutes are being made. Please try again when they are done") }
             return null
         }
         try {
             // 使うモデルは、ゲートに入ってから決める（切り替え・削除と食い違わないように）
-            val model = checkNotNull(ModelStore.active(context)) { "AI モデルがありません。先にダウンロードしてください" }
+            val model = checkNotNull(ModelStore.active(context)) { t("AI モデルがありません。先にダウンロードしてください", "There is no AI model yet. Please download one first") }
             synchronized(lock) {
                 cancelRequested = false
                 // 生成が走っていないときに届いた前回の中止が、今回の生成を止めないようにする
                 engine?.resetCancel()
             }
-            onStatus("モデルを読み込んでいます…")
+            onStatus(t("モデルを読み込んでいます…", "Loading the model…"))
             val e = engineFor(model)
             val plan = if (mode == AskMode.AUTO) plan(e, question, onStatus) else null
             return finish(e, question, plan, onStatus, confirmSearch)
@@ -121,7 +121,7 @@ object AskJob {
 
     /** 検索が要るかの判断。判断できなかったとき（出力を読めないなど）は、検索せずに答える（null）。 */
     private fun plan(e: MinutesEngine, question: String, onStatus: (String) -> Unit): SearchPlan? {
-        onStatus("Web 検索が必要か考えています…")
+        onStatus(t("Web 検索が必要か考えています…", "Thinking about whether a web search is needed…"))
         return try {
             e.planSearch(question)
         } catch (ex: LlmException.Engine) {
@@ -144,21 +144,21 @@ object AskJob {
             if (cancelRequested) throw LlmException.Cancelled()
             if (!allowed) {
                 query = null
-                note = "検索語は送らず、端末の中の知識だけで答えました。"
+                note = t("検索語は送らず、端末の中の知識だけで答えました。", "The search words were not sent. Answered from the model on your device only.")
             }
         }
         if (query != null) {
-            onStatus("Wikipedia を「$query」で検索しています…")
+            onStatus(t("Wikipedia を「$query」で検索しています…", "Searching Wikipedia for “$query”…"))
             try {
                 sources = WebSearch.search(query)
-                if (sources.isEmpty()) note = "検索で資料が見つからなかったので、端末の中の知識だけで答えました。"
+                if (sources.isEmpty()) note = t("検索で資料が見つからなかったので、端末の中の知識だけで答えました。", "No documents were found, so this answers from the model on your device only.")
             } catch (ex: WebSearchException) {
                 if (cancelRequested) throw LlmException.Cancelled()
-                note = "${ex.message}。端末の中の知識だけで答えました。"
+                note = t("${ex.message}。端末の中の知識だけで答えました。", "${ex.message}. Answered from the model on your device only.")
             }
         }
         if (cancelRequested) throw LlmException.Cancelled()
-        onStatus("回答を作っています…")
+        onStatus(t("回答を作っています…", "Writing the answer…"))
         val report = e.answer(question, sources)
         return AskOutcome(report, query, note)
     }

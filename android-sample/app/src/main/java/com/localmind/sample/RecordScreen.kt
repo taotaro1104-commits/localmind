@@ -25,7 +25,7 @@ class RecordScreen(
     private val ui = Ui(context)
     private val px = ui::px
 
-    private val title = ui.text(28f, Palette.white, bold = true).apply { text = "録音" }
+    private val title = ui.text(28f, Palette.white, bold = true).apply { text = t("録音", "Recording") }
     private val status = ui.text(15f, Palette.white)
     private val timer = ui.text(40f, Palette.white, bold = true).apply { fontFeatureSettings = "tnum" }
     private val toggle = ui.text(17f, Palette.ink, bold = true).apply {
@@ -44,23 +44,23 @@ class RecordScreen(
     }
 
     private val consentSwitch = Switch(context).apply {
-        text = "録音の前に、参加者の同意を確認する"
+        text = t("録音の前に、参加者の同意を確認する", "Confirm consent before recording")
         textSize = 16f
         setTextColor(Palette.ink)
         setPadding(0, px(14), 0, px(14))
     }
     private val retention = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
     private val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private val listHeading = heading("保存した録音")
+    private val listHeading = heading(t("保存した録音", "Saved recordings"))
     private val message = ui.text(14f, Palette.muted)
 
     private val body = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        addView(heading("設定"), ui.lp(top = 4))
+        addView(heading(t("設定", "Settings")), ui.lp(top = 4))
         addView(consentSwitch)
-        addView(ui.text(15f, Palette.ink, bold = true).apply { text = "録音の保存期間" }, ui.lp(top = 12))
+        addView(ui.text(15f, Palette.ink, bold = true).apply { text = t("録音の保存期間", "How long to keep recordings") }, ui.lp(top = 12))
         addView(retention, ui.lp(top = 8))
-        addView(ui.text(13f, Palette.muted).apply { text = "期間を過ぎた録音は、自動で削除されます。" }, ui.lp(top = 8))
+        addView(ui.text(13f, Palette.muted).apply { text = t("期間を過ぎた録音は、自動で削除されます。", "Recordings older than this are deleted automatically.") }, ui.lp(top = 8))
         addView(listHeading, ui.lp(top = 32))
         addView(list)
         addView(message, ui.lp(top = 12))
@@ -93,11 +93,11 @@ class RecordScreen(
     /** 録音中か、そうでないか。 */
     fun setActive(active: Boolean, elapsedMs: Long, chunks: Int) {
         banner.setBackgroundColor(if (active) Palette.fail else Palette.ink)
-        title.text = if (active) "録音中" else "録音"
-        status.text = if (active) "端末の中だけに保存しています（保存済み $chunks 区間 ・ 30 秒ごと）" else "会議や講義を、端末の中だけに録音します"
+        title.text = if (active) t("録音中", "Recording") else t("録音", "Recording")
+        status.text = if (active) t("端末の中だけに保存しています（保存済み $chunks 区間 ・ 30 秒ごと）", "Saved on the device only (saved $chunks parts · every 30 seconds)") else t("会議や講義を、端末の中だけに録音します", "Record meetings and lectures on the device only")
         timer.visibility = if (active) View.VISIBLE else View.GONE
         timer.text = clock(elapsedMs)
-        toggle.text = if (active) "録音を止める" else "録音を始める"
+        toggle.text = if (active) t("録音を止める", "Stop recording") else t("録音を始める", "Start recording")
         toggle.contentDescription = toggle.text
     }
 
@@ -110,7 +110,7 @@ class RecordScreen(
             val on = days == retentionDays
             retention.addView(
                 ui.text(15f, if (on) Palette.white else Palette.ink, bold = on).apply {
-                    text = "$days 日"
+                    text = t("$days 日", "$days days")
                     gravity = Gravity.CENTER
                     setPadding(px(18), px(10), px(18), px(10))
                     background = GradientDrawable().apply {
@@ -118,7 +118,7 @@ class RecordScreen(
                         setStroke(px(1), Palette.ink)
                     }
                     isClickable = true
-                    contentDescription = "保存期間を $days 日にする"
+                    contentDescription = t("保存期間を $days 日にする", "Keep recordings for $days days")
                     setOnClickListener { onRetention(days) }
                 },
                 ui.lp(left = if (retention.childCount == 0) 0 else 8, wrap = true),
@@ -127,11 +127,11 @@ class RecordScreen(
     }
 
     fun setRecordings(recordings: List<RecordingInfo>, deletable: Boolean) {
-        listHeading.text = "保存した録音（${recordings.size} 件）"
+        listHeading.text = t("保存した録音（${recordings.size} 件）", "Saved recordings (${recordings.size})")
         list.removeAllViews()
         if (recordings.isEmpty()) {
             list.addView(ui.text(14f, Palette.muted).apply {
-                text = "録音はありません。"
+                text = t("録音はありません。", "There are no recordings.")
                 setPadding(0, px(12), 0, px(12))
             })
         }
@@ -154,28 +154,28 @@ class RecordScreen(
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, px(12), 0, px(12))
         if (!last) background = ui.underline(Palette.line, px(1))
-        val what = if (r.readable) formatDate(r.startedAtMs.toLong()) else "（情報を読めない録音）"
+        val what = if (r.readable) formatDate(r.startedAtMs.toLong()) else t("（情報を読めない録音）", "(recording whose details cannot be read)")
         addView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(ui.text(16f, Palette.ink, bold = true).apply { text = what })
-                addView(ui.text(13f, Palette.muted).apply { text = "${approxLength(r.chunks)} ・ ${megabytes(r.bytes)}" }, ui.lp(top = 2))
+                addView(ui.text(13f, Palette.muted).apply { text = t("${approxLength(r.chunks)} ・ ${megabytes(r.bytes)}", "${approxLength(r.chunks)} · ${megabytes(r.bytes)}") }, ui.lp(top = 2))
             },
             LinearLayout.LayoutParams(0, -2, 1f),
         )
         if (deletable) {
             addView(ui.text(14f, Palette.pass).apply {
-                text = "文字起こし"
+                text = t("文字起こし", "Transcribe")
                 setPadding(px(12), px(10), px(12), px(10))
                 isClickable = true
-                contentDescription = "$what の録音を文字起こしする"
+                contentDescription = t("$what の録音を文字起こしする", "Transcribe the recording from $what")
                 setOnClickListener { onTranscribe(r) }
             })
             addView(ui.text(14f, Palette.fail).apply {
-                text = "削除"
+                text = t("削除", "Delete")
                 setPadding(px(12), px(10), 0, px(10))
                 isClickable = true
-                contentDescription = "$what の録音を削除する"
+                contentDescription = t("$what の録音を削除する", "Delete the recording from $what")
                 setOnClickListener { onDelete(r) }
             })
         }
@@ -195,12 +195,14 @@ class RecordScreen(
             return String.format(Locale.US, "%02d:%02d", s / 60, s % 60)
         }
 
-        fun formatDate(ms: Long): String = SimpleDateFormat("M月d日 HH:mm", Locale.JAPAN).format(Date(ms))
+        fun formatDate(ms: Long): String =
+            if (I18n.lang == Lang.JA) SimpleDateFormat("M月d日 HH:mm", Locale.JAPAN).format(Date(ms))
+            else SimpleDateFormat("MMM d, HH:mm", Locale.ENGLISH).format(Date(ms))
 
         /** チャンクは 30 秒なので、おおよその長さ。 */
         fun approxLength(chunks: UInt): String {
             val minutes = (chunks.toLong() * 30 + 59) / 60
-            return if (chunks == 0u) "音声なし" else if (minutes <= 1) "約 1 分以内" else "約 $minutes 分"
+            return if (chunks == 0u) t("音声なし", "No audio") else if (minutes <= 1) t("約 1 分以内", "about 1 min or less") else t("約 $minutes 分", "about $minutes min")
         }
 
         fun megabytes(bytes: ULong): String = String.format(Locale.US, "%.1f MB", bytes.toDouble() / (1024 * 1024))

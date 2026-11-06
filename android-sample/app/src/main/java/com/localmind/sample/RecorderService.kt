@@ -62,14 +62,14 @@ class RecorderService : Service() {
         // 実行中・停止処理中は、いまの通知のまま呼び直す。
         if (session != null) {
             ongoing?.let { foreground(it) }
-            RecorderState.warn("前の録音を終えています。少し待ってから、もう一度お試しください")
+            RecorderState.warn(t("前の録音を終えています。少し待ってから、もう一度お試しください", "The previous recording is still being finished. Please wait a moment and try again"))
             return
         }
         val startedAt = System.currentTimeMillis()
         val refusal = preconditionFailure()
         val notification = notification(startedAt)
         if (!foreground(notification) || refusal != null) {
-            fail(refusal ?: "録音を始められませんでした")
+            fail(refusal ?: t("録音を始められませんでした", "Could not start recording"))
             return
         }
         ongoing = notification
@@ -83,13 +83,13 @@ class RecorderService : Service() {
     /** 録音を始める前提（マイクの許可・通知が見えること）。満たさなければ理由を返す。 */
     private fun preconditionFailure(): String? {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            return "マイクの許可がありません"
+            return t("マイクの許可がありません", "No microphone permission")
         }
         val manager = getSystemService(NotificationManager::class.java)
         channel()
         val channelOff = manager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
         if (!manager.areNotificationsEnabled() || channelOff) {
-            return "録音中の通知が無効です。録音していることを常に分かるようにするため、通知を許可してください"
+            return t("録音中の通知が無効です。録音していることを常に分かるようにするため、通知を許可してください", "The recording notification is turned off. Please allow notifications so that it is always clear when recording")
         }
         return null
     }
@@ -117,7 +117,7 @@ class RecorderService : Service() {
             recorder = store.begin(id, consent, RECORD_SAMPLE_RATE.toUInt(), startedAt.toULong())
             capture(mine, recorder, audio)
         } catch (e: Exception) {
-            failure = userMessage(e, debuggable = false, fallback = "録音を続けられませんでした")
+            failure = userMessage(e, debuggable = false, fallback = t("録音を続けられませんでした", "Could not keep recording"))
         } finally {
             failure = finish(store, id, recorder, audio, failure)
             RecorderState.end(failure)
@@ -133,14 +133,14 @@ class RecorderService : Service() {
 
     private fun openMicrophone(): AudioRecord {
         val minBuffer = AudioRecord.getMinBufferSize(RECORD_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        check(minBuffer > 0) { "この端末では録音できません" }
+        check(minBuffer > 0) { t("この端末では録音できません", "This device cannot record") }
         val audio = AudioRecord(
             MediaRecorder.AudioSource.MIC, RECORD_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, RECORD_SAMPLE_RATE * 2),
         )
         if (audio.state != AudioRecord.STATE_INITIALIZED) {
             audio.release()
-            error("マイクを使えません（ほかのアプリが使用中かもしれません）")
+            error(t("マイクを使えません（ほかのアプリが使用中かもしれません）", "Cannot use the microphone (another app may be using it)"))
         }
         return audio
     }
@@ -151,7 +151,7 @@ class RecorderService : Service() {
         audio.startRecording()
         while (!mine.stopRequested) {
             val n = audio.read(buffer, 0, buffer.size)
-            if (n < 0) error("マイクから読めなくなりました")
+            if (n < 0) error(t("マイクから読めなくなりました", "Can no longer read from the microphone"))
             if (n > 0) RecorderState.saved(recorder.push(buffer.asList().subList(0, n).toList()).toInt())
         }
     }
@@ -167,7 +167,7 @@ class RecorderService : Service() {
         saved.onSuccess { RecorderState.saved(it) }
         // 音声が 1 つも保存できなかった録音（すぐに止めた・始めてすぐ失敗した）は、空の記録を残さない。
         if (recorder.savedChunks() == 0u) runCatching { store.deleteRecording(id) }
-        return failure ?: saved.exceptionOrNull()?.let { userMessage(it, false, "最後の保存に失敗しました") }
+        return failure ?: saved.exceptionOrNull()?.let { userMessage(it, false, t("最後の保存に失敗しました", "Saving the last part failed")) }
     }
 
     /** 前提を満たさない・前面サービスにできないなどで、録音を始めずに終える。 */
@@ -189,15 +189,15 @@ class RecorderService : Service() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("録音中")
-            .setContentText("端末の中だけに保存しています。止めるには「停止」を押してください")
+            .setContentTitle(t("録音中", "Recording"))
+            .setContentText(t("端末の中だけに保存しています。止めるには「停止」を押してください", "Saved on the device only. Tap “Stop” to stop"))
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setVisibility(Notification.VISIBILITY_PUBLIC) // ロック画面にも出す（録音中であることを隠さない）
             .setWhen(startedAt)
             .setUsesChronometer(true)
             .setContentIntent(open)
-            .addAction(Notification.Action.Builder(null, "停止", stop).build())
+            .addAction(Notification.Action.Builder(null, t("停止", "Stop"), stop).build())
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
@@ -206,7 +206,7 @@ class RecorderService : Service() {
         channel()
         val n = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("録音を止めました")
+            .setContentTitle(t("録音を止めました", "Recording stopped"))
             .setContentText(message)
             .setAutoCancel(true)
             .build()
@@ -217,8 +217,8 @@ class RecorderService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "録音", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "録音中は、この通知を常に表示します"
+                NotificationChannel(CHANNEL_ID, t("録音", "Recording"), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = t("録音中は、この通知を常に表示します", "This notification is always shown while recording")
                     lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 },
             )
