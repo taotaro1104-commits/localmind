@@ -25,6 +25,9 @@ allow = [
     "OpenSSL",
     "CDLA-Permissive-2.0",
     "BSL-1.0",
+    # whisper-rs / whisper-rs-sys（whisper.cpp の Rust バインディング）。パブリックドメインへの献呈で、制約は無い。
+    # （同梱される whisper.cpp / ggml の C/C++ のソースは MIT。配布するときは著作権表示を添える。）
+    "Unlicense",
 ]
 [licenses.private]
 ignore = true

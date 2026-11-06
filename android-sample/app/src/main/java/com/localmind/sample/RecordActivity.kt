@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.WindowInsetsController
+import android.view.WindowManager
 import kotlin.concurrent.thread
 import uniffi.lm_ffi.RecordingInfo
 
@@ -34,7 +35,7 @@ class RecordActivity : Activity() {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
         prefs = RecordPrefs(this)
-        screen = RecordScreen(this, ::toggle, ::setConfirmConsent, ::setRetention, ::confirmDelete)
+        screen = RecordScreen(this, ::toggle, ::setConfirmConsent, ::setRetention, ::confirmDelete, ::transcribe)
         setContentView(screen.view)
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
@@ -50,6 +51,11 @@ class RecordActivity : Activity() {
     override fun onResume() {
         super.onResume()
         tick()
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) { SpeechJob.cancel(); MinutesJob.cancel() } // 画面を閉じたら、重い処理も止める（回転などの作り直しでは止めない）
+        super.onDestroy()
     }
 
     override fun onPause() {
@@ -163,6 +169,100 @@ class RecordActivity : Activity() {
         }
     }
 
+    /** 録音を文字起こしする（重いので別スレッド。進み具合を出し、もう一度押すと中止する）。 */
+    private fun transcribe(r: RecordingInfo) {
+        if (SpeechJob.isRunning) {
+            SpeechJob.cancel()
+            screen.note("中止しています…（今の処理が止まるまで待ちます）", ok = true)
+            return
+        }
+        if (RecorderState.active || MinutesJob.isRunning) {
+            screen.note("録音中は文字起こしできません。止めてからお試しください", ok = false)
+            return
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // 実行中は画面を消さない
+        screen.note("モデルを読み込んでいます…（もう一度押すと中止）", ok = true)
+        thread(name = "lm-speech") {
+            val result = runCatching {
+                SpeechJob.run(
+                    applicationContext, openRecordingStore(applicationContext), r.id,
+                ) { done, total ->
+                    runOnUiThread { screen.note("文字起こし中… $done / $total（もう一度押すと中止）", ok = true) }
+                }
+            }
+            runOnUiThread {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (isDestroyed) return@runOnUiThread
+                result.onSuccess { if (it != null) showTranscript(it, r.id) }
+                    .onFailure { screen.note(userMessage(it, debuggable, "文字起こしできませんでした"), ok = false) }
+            }
+        }
+    }
+
+    private fun showTranscript(result: uniffi.lm_ffi.SpeechResult, recordingId: String) {
+        val notes = buildList {
+            if (result.cancelled) add("中止しました（それまでの結果です）")
+            if (result.skippedChunks > 0u) add("読めない区間が ${result.skippedChunks} 個あり、その部分は含まれません")
+        }
+        screen.note(notes.firstOrNull() ?: "文字起こしが終わりました", ok = notes.isEmpty() || result.cancelled)
+        val body = if (result.segments.isEmpty()) "発話が見つかりませんでした。" else SpeechJob.format(result.segments)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("文字起こしの結果")
+            .setMessage((notes + body).joinToString(NL2))
+            .setPositiveButton("閉じる", null)
+        if (result.segments.isNotEmpty()) {
+            dialog.setNeutralButton("議事録を作る") { _, _ -> makeMinutes(recordingId, result.segments) }
+        }
+        dialog.show()
+    }
+
+    /** 文字起こしから議事録を作って保存する（重いので別スレッド。もう一度押すと中止する）。 */
+    private fun makeMinutes(recordingId: String, segments: List<uniffi.lm_ffi.SpokenSegment>) {
+        if (MinutesJob.isRunning) {
+            MinutesJob.cancel()
+            screen.note("中止しています…", ok = true)
+            return
+        }
+        if (SpeechJob.isRunning || RecorderState.active) {
+            screen.note("文字起こしや録音が終わってからお試しください", ok = false)
+            return
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        screen.note("議事録を作っています…（数分かかります）", ok = true)
+        thread(name = "lm-minutes") {
+            val result = runCatching { MinutesJob.run(applicationContext, recordingId, segments) }
+            runOnUiThread {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (isDestroyed) return@runOnUiThread
+                result.onSuccess { report -> if (report != null) showMinutes(report) }
+                    .onFailure {
+                        if (debuggable) android.util.Log.w("LMSample", "minutes failure: $it", it)
+                        screen.note(MinutesJob.userMessage(it, "議事録を作れませんでした"), ok = false)
+                    }
+            }
+        }
+    }
+
+    private fun showMinutes(report: uniffi.lm_llm_ffi.MinutesReport) {
+        screen.note("議事録を保存しました", ok = true)
+        val text = MinutesJob.format(report)
+        AlertDialog.Builder(this)
+            .setTitle("議事録")
+            .setMessage(if (text.isEmpty()) "項目を抽出できませんでした。" else text)
+            .setPositiveButton("閉じる", null)
+            .setNeutralButton("共有") { _, _ ->
+                startActivity(
+                    android.content.Intent.createChooser(
+                        android.content.Intent(android.content.Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, text + NL2 + "※AI が自動で作った議事録です。原文と照合してください。"),
+                        "議事録を共有",
+                    ),
+                )
+            }
+            .show()
+    }
+
     /** 保存した録音の一覧を読み直す。 */
     private fun refresh() {
         thread(name = "lm-list") {
@@ -187,3 +287,6 @@ class RecordActivity : Activity() {
         )
     }
 }
+
+/** 段落の区切り（空行）。 */
+private val NL2 = "\n" + "\n"

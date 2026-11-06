@@ -50,3 +50,10 @@ Kotlin 実装の `ForeignEmbedder` の注入、`dim()` の例外がクラッシ�
 - 権限: マイク（`RECORD_AUDIO`）と通知（`POST_NOTIFICATIONS`）。録音画面は外部のアプリから開けない（`exported=false`）。
 
 エミュレータで試すとき: マイク入力を使うので、`-no-audio` を付けずに起動する（音は無音でよい）。録音画面は外から直接起動できないので、自己テストの結果画面のボタンから開く。
+
+## 議事録（LLM）
+
+文字起こしの結果の「議事録を作る」は、`liblm_llm_ffi.so`（llama.cpp）で議事録を抽出する。モデル（約 1.1GB）は APK に
+同梱しない。`files/llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` に置くこと（`MinutesJob.kt` の SHA-256 と一致しないと読み込まない）。
+`scripts/build-android.sh` は `liblm_ffi.so` と `liblm_llm_ffi.so` の両方を作る。Kotlin のバインディングは両方とも
+同じビルドから生成し直すこと。

@@ -79,6 +79,14 @@ pub struct Recorder {
     saved: AtomicU32,
 }
 
+impl RecordingStore {
+    /// 保存先（文字起こしなど、同じ crate の別の機能が録音を読むのに使う）。
+    #[cfg(feature = "whisper")]
+    pub(crate) fn fs(&self) -> &FsChunkStore {
+        &self.store
+    }
+}
+
 impl Recorder {
     fn writer(&self) -> MutexGuard<'_, Option<ChunkWriter>> {
         // 別スレッドが失敗しても止めない（保存済みのチャンクは壊れない）。

@@ -1,0 +1,26 @@
+[package]
+name = "lm-llm-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# whisper.cpp と llama.cpp は、どちらも ggml を同梱していて、1 つの実行ファイル・ライブラリには同居できない
+# （シンボルが重複してリンクに失敗する）。そのため、LLM は `lm-ffi` とは別のライブラリにする。
+# cdylib は公開するシンボルを絞るので、2 つの .so の ggml が互いに干渉することはない。
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+lm-ingest = { path = "../lm-ingest" }
+lm-llm = { path = "../lm-llm", features = ["llama"] }
+thiserror = { workspace = true }
+uniffi = { workspace = true }

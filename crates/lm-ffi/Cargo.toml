@@ -19,11 +19,14 @@ required-features = ["bindgen"]
 bindgen = ["uniffi/cli"]
 # 同梱の e5 モデルで動く SearchEngine::open_e5 を有効にする（ONNX Runtime が要る）。
 onnx = ["lm-search/onnx"]
+# 保存済みの録音を whisper.cpp で文字起こしする SpeechEngine を有効にする（ネイティブのビルドに cmake が要る）。
+whisper = ["dep:lm-whisper"]
 
 [dependencies]
 lm-ingest = { path = "../lm-ingest" }
 lm-router = { path = "../lm-router" }
 lm-search = { path = "../lm-search", features = ["lindera", "sqlite"] }
+lm-whisper = { path = "../lm-whisper", optional = true }
 lm-workspace = { path = "../lm-workspace" }
 thiserror = { workspace = true }
 uniffi = { workspace = true }

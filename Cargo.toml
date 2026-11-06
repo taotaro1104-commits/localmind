@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lm-scheduler", "crates/lm-router", "crates/lm-search", "crates/lm-ingest", "crates/lm-ffi", "crates/lm-workspace"]
+members = ["crates/lm-scheduler", "crates/lm-router", "crates/lm-search", "crates/lm-ingest", "crates/lm-ffi", "crates/lm-workspace", "crates/lm-whisper", "crates/lm-llm", "crates/lm-llm-ffi"]
 
 [workspace.package]
 version = "0.1.0"

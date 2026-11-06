@@ -37,9 +37,9 @@ ID 規則: `<機能記号>-<連番>`。全タスク共通の受け入れ条件: 
 - [~] A-1 Foreground Service（microphone）、30秒チャンク逐次保存、クラッシュ復元（`lm-ingest`: チャンク分割・原子的保存・復元は完了。`lm-ffi::RecordingStore`/`Recorder` で Kotlin へ公開。サンプルアプリの `RecorderService` が、マイクを 16kHz で読んで 30 秒ごとに保存し、停止時に端数も保存する。エミュレータ（API 35）で、開始・保存・停止・一覧を確認。ハードリンクを許さない Android の SELinux でも録音を始められるよう、メタの新規作成を `O_EXCL` へフォールバックする。録音は 1 度に 1 つで、止める処理が終わるまで次を始めない。保存に失敗した録音は、抜けのある並びを作らず終了扱い。強制終了後の自動再開はしない（`START_NOT_STICKY`）。arm64 実機は未確認）
 - [~] A-2 録音開始時の同意確認（設定で OFF 可）、録音中の常時通知、自動削除期限（`lm-ingest`: `begin_recording` は同意なしを拒否し、`save_chunk` は同意が確認された録音にだけ保存する。`revoke_consent`、`clean_stale_tmp`、`purge_expired`（保持日数 0 拒否、現在時刻の妥当性検査、1 回 100 件の上限。メタが読めない録音は、録音ディレクトリの最終更新時刻から保持期間を過ぎたら削除）、録音の一覧 `list_recordings`。サンプルアプリ: 録音前の同意確認ダイアログ（設定でオフにできる。オフにする前にもう一度確認）、録音中の常時通知（消せない・ロック画面にも表示・停止ボタン・経過時間。通知が無効なら録音しない）、保存期間（7/30/90 日）の設定、画面を開いたとき・録音を止めたとき・1 日ごとのジョブ（再起動後も継続）での自動削除、録音の一覧と削除（確認つき）、バックアップ対象から除外。端末の時計が巻き戻されると期限切れにならない点は、仕様として許容）
 - [x] A-3 VAD（無音除去）（`lm-ingest::vad`: エネルギー VAD、ノイズフロアの自動調整）
-- [~] A-4 whisper.cpp 2段構成（録音中は小型モデル、充電中に大型で再処理し差分更新）（`lm-ingest`: `Transcriber` trait・Draft/Refined・差分更新は完了。whisper.cpp 本体の統合は未着手）
+- [~] A-4 whisper.cpp 2段構成（録音中は小型モデル、充電中に大型で再処理し差分更新）（`lm-ingest`: `Transcriber` trait・Draft/Refined・差分更新は完了。whisper.cpp は `lm-whisper`（`Transcriber` の実装）で統合済み: モデルは SHA-256 固定で、録音中は base + 貪欲探索・充電中は small + ビーム探索を想定。`lm-ffi::SpeechEngine`（feature `whisper`）で Kotlin へ公開し、サンプルアプリは録音の一覧から「文字起こし」できる（進み具合・中止つき）。ホスト（Windows）で base は実時間の約 1.7 倍速、small は約 0.5 倍速。エミュレータ（x86_64）では base で約 0.1 倍速で、arm64 実機の速度は未確認。文字起こしの結果の保存・議事録への接続は未着手）
 - [~] A-5 話者A/B を後から手動命名する UI（`lm-ingest::Transcript::rename_speaker` は完了。UI は未着手）
-- [~] A-6 LLM 抽出（要約・決定事項・ToDo・未解決論点）とタイムスタンプ付き音声引用（`lm-ingest`: セグメント単位の索引化と、参照 id → 時刻の復元、`MinutesExtractor` trait と LLM 出力の検証 `extract_minutes`（実在するセグメントを引用しない項目は採用しない・無害化・件数制限）は完了。LLM 本体（Nano/GGUF）との接続は未着手）
+- [~] A-6 LLM 抽出（要約・決定事項・ToDo・未解決論点）とタイムスタンプ付き音声引用（`lm-ingest`: セグメント単位の索引化と、参照 id → 時刻の復元、`MinutesExtractor` trait と LLM 出力の検証 `extract_minutes`（実在するセグメントを引用しない項目は採用しない・無害化・件数制限）は完了。GGUF の LLM（llama.cpp）との接続は `lm-llm`（`MinutesExtractor` の実装）で完了: 出力の形を文法（GBNF）で縛り、文字起こしは信用しないデータとして渡し（区切りと特殊トークンを無害化）、実在する発話を引用しない項目は `extract_minutes` が落とす。モデルは SHA-256 固定（Qwen2.5-1.5B Q4_K_M）で、検証後の差し替えは読み込み直前に大きさ・更新時刻で確認する（完全ではない）。生成は 900 秒で打ち切り、中止できる。`lm-llm-ffi::MinutesEngine` で Kotlin へ公開し、サンプルアプリは文字起こしの結果から「議事録を作る」・共有ができる。ホストの実モデルでは引用が実在する発話に付くことを確認。1.5B は「やること」の分類が粗い。入力は 5000 文字まで（長い会議の分割抽出は未着手）。エミュレータでの通し確認と arm64 実機の速度は未確認。Nano は未着手）
 - A-7 講義モード（スライド写真を録音タイムラインに紐づけ）
 - [~] A-8 データモデル RECORDING / TRANSCRIPT_SEGMENT / ACTION_ITEM（RECORDING・TRANSCRIPT_SEGMENT 相当は `lm-ingest` に実装。ACTION_ITEM 相当の `ActionItem`（担当者・期限・完了・根拠の引用）は `lm-ingest::minutes` に実装。`save_minutes` / `load_minutes` で録音ディレクトリへ永続化（テキスト形式、読み込み時に再検証）。DB 化は未着手）
 - A-9 処理時間の事前見積もり表示、Thermal mode 連動
@@ -55,7 +55,7 @@ ID 規則: `<機能記号>-<連番>`。全タスク共通の受け入れ条件: 
 ### F 出力テンプレート（依存: G-5 周辺、GBNF）
 - F-1 JSON スキーマ指定の構造化出力（GBNF）
 - F-2 組み込みテンプレート: 議事録・日報・週報・比較表・FAQ・暗記カード・メール下書き
-- [~] F-3 書き出し: Markdown / CSV / Anki(.apkg) / ICS（議事録の Markdown・CSV・iCalendar（アクションアイテムを ToDo に）は `lm-ingest::export` に実装。`lm-ffi::RecordingStore::export_minutes` で Kotlin へ公開。本文に混ぜられた記号が、書き出した文書の構造や動作（Markdown の見出し・リンク・HTML、CSV の数式、iCalendar の行・部品）を変えないよう、形式ごとに逃がす。期限は日付として読めるものだけ `DUE` にする。Anki は暗記カードの生成（H-1）が前提なので未着手。アプリの画面からの書き出し・共有は、議事録を作る LLM の接続（A-6）が前提なので未着手）
+- [~] F-3 書き出し: Markdown / CSV / Anki(.apkg) / ICS（議事録の Markdown・CSV・iCalendar（アクションアイテムを ToDo に）は `lm-ingest::export` に実装。`lm-ffi::RecordingStore::export_minutes` で Kotlin へ公開。本文に混ぜられた記号が、書き出した文書の構造や動作（Markdown の見出し・リンク・HTML、CSV の数式、iCalendar の行・部品）を変えないよう、形式ごとに逃がす。期限は日付として読めるものだけ `DUE` にする。Anki は暗記カードの生成（H-1）が前提なので未着手。アプリの画面からは議事録の共有（テキスト）まで。ファイルへの書き出しは未着手）
 - F-4 ユーザー自作テンプレートのファイル共有（プロンプトのみ、実行コードなし）
 
 ### C ウィジェット・タイル

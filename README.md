@@ -17,6 +17,26 @@ llama.cpp / whisper.cpp / AICore / 実埋め込みモデルは trait で抽象�
   文書・見出しの並び・行番号・抜粋の出典をつける。原本を保存し、チャンクは原本から決まった手順で作る
   （位置を別に保存しない。分割方式を変えたら `CHUNKER_VERSION` を上げる）。保存先は 1 文書 1 ファイル。
   資料は 200 件・合計 16MiB・1 文書 256KiB まで。id は小文字の英数字・`-`・`_`（OS の予約名は不可）
+- `lm-whisper` — whisper.cpp（whisper-rs）による文字起こし。`lm-ingest` の `Transcriber` の実装。モデルは SHA-256 が
+  固定したものと一致するファイルだけを読み込む。`Fast`（貪欲探索。録音中の仮の結果）と `Accurate`（ビーム探索。充電中の
+  再処理）を選べる。ネイティブのビルドに cmake と、ホストでは libclang（bindgen）が要る。Android 向けのビルドは
+  `scripts/build-android.sh`（ABI ごとのラッパー `crates/lm-whisper/android/*.toolchain.cmake` を使う）。
+  配布するときは、whisper.cpp・ggml・モデル（いずれも MIT）の著作権表示を同梱すること。`deny.toml` は、依存の一部が使う
+  `Unlicense` を許可している。
+  Windows でホスト向けに速く動かすには、cmake の最適化を環境変数で明示する
+  （`CMAKE_C_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG"` と `CMAKE_CXX_FLAGS_RELEASE` も同様）。指定しないと、最適化なしで約 5 倍遅い。
+- `lm-llm` — GGUF の LLM（llama.cpp、`llama-cpp-2` を `=` で固定）による議事録の抽出。`lm-ingest` の `MinutesExtractor` の
+  実装。出力は文法（GBNF）で JSON に縛り、`extract_minutes` が根拠の実在などを検証する。モデルは SHA-256 が固定したものと
+  一致するファイルだけを読み込み（既定は Qwen2.5-1.5B-Instruct Q4_K_M、Apache-2.0）、読み込む直前に大きさ・更新時刻を
+  再確認する（llama.cpp はパスから開くため、差し替えを完全には防げない。モデルはアプリ専用領域に置くこと）。生成は 900 秒で
+  打ち切り、中止できる。`llama` feature でネイティブ（cmake と libclang が要る）をビルドする。配布するときは、llama.cpp・
+  ggml（MIT）とモデルのライセンス表記を同梱すること。
+- `lm-llm-ffi` — `lm-llm` を Kotlin へ公開する UniFFI ライブラリ（`MinutesEngine`）。whisper.cpp と llama.cpp は、どちらも
+  ggml を同梱していて 1 つのバイナリにリンクすると重複定義になるため、`lm-ffi`（`liblm_ffi.so`）とは別の
+  `liblm_llm_ffi.so` にしている。Kotlin のバインディングは別に生成する:
+  `cargo run -p lm-llm-ffi --features bindgen --bin uniffi-bindgen -- generate --library target/debug/lm_llm_ffi.dll --language kotlin --out-dir dist/android/kotlin --no-format`。
+  モデル（約 1.1GB）はアプリに同梱しない。デバッグ用には `adb push` のあと
+  `adb shell run-as com.localmind.sample cp /data/local/tmp/<ファイル> files/llm/` で置く。
 - `lm-ingest` — 録音の取り込み: 30秒チャンク分割・原子的な保存とクラッシュ復元・VAD・文字起こしパイプライン
   （`Transcriber` trait の裏に whisper.cpp を差し込む）・議事録の土台（仮→高精度の差分更新、話者の手動命名、
   タイムスタンプ参照から検索索引へ）

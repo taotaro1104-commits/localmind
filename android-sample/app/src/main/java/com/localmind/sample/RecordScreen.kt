@@ -20,6 +20,7 @@ class RecordScreen(
     private val onConsentPref: (Boolean) -> Unit,
     private val onRetention: (Int) -> Unit,
     private val onDelete: (RecordingInfo) -> Unit,
+    private val onTranscribe: (RecordingInfo) -> Unit,
 ) {
     private val ui = Ui(context)
     private val px = ui::px
@@ -163,6 +164,13 @@ class RecordScreen(
             LinearLayout.LayoutParams(0, -2, 1f),
         )
         if (deletable) {
+            addView(ui.text(14f, Palette.pass).apply {
+                text = "文字起こし"
+                setPadding(px(12), px(10), px(12), px(10))
+                isClickable = true
+                contentDescription = "$what の録音を文字起こしする"
+                setOnClickListener { onTranscribe(r) }
+            })
             addView(ui.text(14f, Palette.fail).apply {
                 text = "削除"
                 setPadding(px(12), px(10), 0, px(10))

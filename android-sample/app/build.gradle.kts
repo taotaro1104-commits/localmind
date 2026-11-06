@@ -20,7 +20,7 @@ android {
     // APK 内から直接読み込まず nativeLibraryDir へ展開する。
     packaging { jniLibs { useLegacyPackaging = true } }
     // モデル（約 470MB）と設定ファイルは圧縮しない（長さの確認に openFd を使うため。起動時に filesDir へ展開する）。
-    androidResources { noCompress += listOf("onnx", "json") }
+    androidResources { noCompress += listOf("onnx", "json", "bin") }
 
     // Rust 側の成果物（dist/android）を直接参照する。コピーしない。
     sourceSets["main"].jniLibs.directories.add("../../dist/android/jniLibs")

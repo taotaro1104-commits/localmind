@@ -9,6 +9,9 @@ mod error;
 mod recording;
 mod router;
 mod search;
+#[cfg(feature = "whisper")]
+mod speech;
+
 mod workspace;
 
 pub use error::FfiError;
@@ -21,11 +24,16 @@ pub use search::{
 };
 pub use workspace::{Citation, DocFormat, DocumentInfo, WorkspaceEngine, WorkspaceReport};
 
+#[cfg(feature = "whisper")]
+pub use speech::{SpeechEngine, SpeechProgress, SpeechQuality, SpokenSegment};
+
 uniffi::setup_scaffolding!();
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_recording;
+#[cfg(all(test, feature = "whisper"))]
+mod tests_speech;
 #[cfg(test)]
 mod tests_workspace;
