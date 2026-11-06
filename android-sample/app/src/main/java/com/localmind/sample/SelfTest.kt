@@ -147,5 +147,29 @@ fun runSelfTest(dir: File): List<Check> {
         val wrong = local.filterNot { ModelDownloader.isLocalAddress(it) } + listOf("8.8.8.8").filter { ModelDownloader.isLocalAddress(it) }
         if (wrong.isEmpty()) null else "判定が違う: $wrong"
     }
+    results += check("モデルの記録: 壊れた記録は使わず、切り替えと掃除が働く") {
+        val d = File(dir, "models").also { it.deleteRecursively(); it.mkdirs() }
+        val shaA = "a".repeat(64)
+        val shaB = "b".repeat(64)
+        val a = File(d, "a.gguf").also { it.writeText("x") }
+        val b = File(d, "b.gguf").also { it.writeText("y") }
+        val part = File(d, "dl-0123456789ab.part").also { it.writeText("z") }
+        val errors = mutableListOf<String>()
+        if (ModelStore.active(d) != null) errors += "空なのに有効"
+        File(d, "active.txt").writeText("../a.gguf|$shaA")
+        if (ModelStore.active(d) != null) errors += "パスを含む記録を受け入れた"
+        File(d, "active.txt").writeText("a.gguf|xyz")
+        if (ModelStore.active(d) != null) errors += "不正な SHA の記録を受け入れた"
+        ModelStore.activate(d, a, shaA)
+        if (ModelStore.active(d)?.sha256 != shaA) errors += "記録を読み戻せない"
+        ModelStore.activate(d, b, shaB)
+        if (ModelStore.active(d)?.file?.name != "b.gguf" || !a.exists()) errors += "切り替えで、前のモデルが先に消えた"
+        ModelStore.prune(d, alsoParts = false)
+        if (a.exists() || !part.exists()) errors += "掃除（取りかけを残す）が違う"
+        ModelStore.prune(d, alsoParts = true)
+        if (part.exists() || !b.exists()) errors += "掃除（取りかけも消す）が違う"
+        d.deleteRecursively()
+        if (errors.isEmpty()) null else errors.joinToString("、")
+    }
     return results
 }

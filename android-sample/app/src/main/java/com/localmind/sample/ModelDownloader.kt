@@ -11,7 +11,8 @@ import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** ダウンロードに失敗した理由。文面はそのまま画面に出す（URL や端末のパスは入れない）。 */
-class ModelDownloadException(message: String) : Exception(message)
+/** `field` は、入力の誤りがどの欄のものか（"url" / "sha"）。取得中の失敗では null。 */
+class ModelDownloadException(message: String, val field: String? = null) : Exception(message)
 
 /**
  * 取得するモデル。候補（[ModelSpec]）なら大きさと SHA-256 が固定されていて、接続先も取得元に限る。
@@ -30,13 +31,13 @@ class ModelSource private constructor(
 
         /** 利用者が入れた URL。https 以外・認証情報つき・書式の誤りは拒否する。SHA-256 は小文字の 16 進 64 文字（任意）。 */
         fun custom(urlText: String, sha256: String?): ModelSource {
-            val url = try { URL(urlText.trim()) } catch (_: Exception) { throw ModelDownloadException("URL の書式が正しくありません") }
+            val url = try { URL(urlText.trim()) } catch (_: Exception) { throw ModelDownloadException("URL の書式が正しくありません", "url") }
             if (url.protocol != "https" || url.userInfo != null || url.host.isNullOrEmpty()) {
-                throw ModelDownloadException("URL は https:// で始まるものだけ指定できます")
+                throw ModelDownloadException("URL は https:// で始まるものだけ指定できます", "url")
             }
             val sha = sha256?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
             if (sha != null && !ModelStore.isValidSha(sha)) {
-                throw ModelDownloadException("SHA-256 は 16 進 64 文字で入力してください")
+                throw ModelDownloadException("SHA-256 は 16 進 64 文字で入力してください", "sha")
             }
             return ModelSource(url, null, sha, null, false)
         }
@@ -94,14 +95,15 @@ object ModelDownloader {
 
     fun partFile(context: Context, source: ModelSource) = File(ModelStore.dir(context), partName(source))
 
+    /** 再開できる取りかけのバイト数。SHA-256 が分からないモデルは再開しないので 0。 */
     fun partialBytes(context: Context, source: ModelSource): Long =
-        partFile(context, source).takeIf { it.isFile }?.length() ?: 0L
+        if (source.expectedSha256 == null) 0L else partFile(context, source).takeIf { it.isFile }?.length() ?: 0L
 
     /**
      * モデルを取得して使うモデルにする。重いので別スレッドから呼ぶこと。すでに実行中なら false。
      * `onProgress(取得済み, 全体)` は、進むたびに呼ばれる。中止は [cancel]。
      */
-    fun download(context: Context, source: ModelSource, onProgress: (Long, Long) -> Unit): Boolean {
+    fun download(context: Context, source: ModelSource, onVerify: () -> Unit = {}, onProgress: (Long, Long) -> Unit): Boolean {
         if (!running.compareAndSet(false, true)) return false
         val stop = AtomicBoolean(false)
         stopFlag = stop
@@ -115,6 +117,7 @@ object ModelDownloader {
             val total = fetch(source, part, dir, stop, onProgress)
             if (part.length() != total) throw ModelDownloadException("ダウンロードが途中で終わりました。もう一度お試しください")
             checkGguf(part)
+            onVerify()
             val sha = sha256(part, stop)
             val expected = source.expectedSha256
             if (expected != null && sha != expected) {
@@ -177,6 +180,7 @@ object ModelDownloader {
     private fun fetch(source: ModelSource, part: File, dir: File, stop: AtomicBoolean, onProgress: (Long, Long) -> Unit): Long {
         var start = if (part.isFile) part.length() else 0L
         if (source.expectedBytes != null && start > source.expectedBytes) { part.delete(); start = 0L }
+        if (source.expectedBytes != null && start == source.expectedBytes) return start // 取り終わっている（検証だけ行う）
         val conn = try { open(source, start) } catch (e: ModelDownloadException) { throw e } catch (_: javax.net.ssl.SSLException) {
             throw ModelDownloadException("安全な接続を確立できませんでした（回線や証明書に問題があるかもしれません）")
         } catch (_: IOException) {
@@ -184,7 +188,12 @@ object ModelDownloader {
         }
         try {
             val code = conn.responseCode
-            if (code == 416) { part.delete(); throw ModelDownloadException("取りかけのファイルを破棄しました。もう一度お試しください") }
+            if (code == 416) {
+                // すべて取得済み（検証の途中で中止したあと）なら、そのまま検証へ進む。SHA-256 が分からなければ破棄する。
+                if (source.expectedSha256 != null && start > 0) return start
+                part.delete()
+                throw ModelDownloadException("取りかけのファイルを破棄しました。もう一度お試しください")
+            }
             if (code != 200 && code != 206) throw ModelDownloadException("ダウンロードできません（サーバーの応答 $code）")
             if (code == 200) start = 0L // 再開を受け付けない場合は、最初から
             val total = totalBytes(conn, code, start, source)

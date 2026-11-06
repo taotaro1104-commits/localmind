@@ -48,9 +48,10 @@ object ModelStore {
     internal fun isValidName(name: String) = NAME.matches(name) && !name.contains("..")
     internal fun isValidSha(sha: String) = HEX64.matches(sha)
 
+    fun active(context: Context): ActiveModel? = active(dir(context))
+
     /** 使うモデル。無ければ null。記録が無くても、以前の標準のファイルがあればそれを使う。 */
-    fun active(context: Context): ActiveModel? {
-        val d = dir(context)
+    internal fun active(d: File): ActiveModel? {
         val line = File(d, ACTIVE).takeIf { it.isFile && it.length() < 512 }?.readText()?.trim()
         if (line != null) {
             val (name, sha) = line.split('|', limit = 2).let { it.getOrNull(0).orEmpty() to it.getOrNull(1).orEmpty() }
@@ -62,22 +63,32 @@ object ModelStore {
     }
 
     /** `file` を使うモデルにする。ほかのモデルは、新しいモデルで議事録を作れたあとに [prune] で消す。 */
-    fun activate(context: Context, file: File, sha256: String) {
+    fun activate(context: Context, file: File, sha256: String) = activate(dir(context), file, sha256)
+
+    internal fun activate(d: File, file: File, sha256: String) {
         require(isValidName(file.name) && isValidSha(sha256)) { "モデルの記録が不正です" }
-        val d = dir(context)
         val tmp = File(d, "$ACTIVE.tmp")
-        tmp.writeText("${file.name}|$sha256")
-        if (!tmp.renameTo(File(d, ACTIVE))) {
-            tmp.delete()
-            throw IllegalStateException("モデルの記録を保存できません")
+        try {
+            tmp.writeText("${file.name}|$sha256")
+            check(tmp.renameTo(File(d, ACTIVE))) { "モデルの記録を保存できません" }
+        } finally {
+            tmp.delete() // 成功したあとは、もう無い。失敗したときの取り残しを消す
         }
     }
 
+    /** 記録を外す（読み込めないモデルを使い続けない）。ファイルは消さない。 */
+    fun forget(context: Context) {
+        File(dir(context), ACTIVE).delete()
+    }
+
     /** 使っているモデル以外の `.gguf` と、取りかけを消す（容量のため）。 */
-    fun prune(context: Context) {
-        val keep = active(context)?.file?.name ?: return
-        dir(context).listFiles()
-            ?.filter { it.isFile && it.name != keep && (it.name.endsWith(".gguf") || it.name.endsWith(".part")) }
+    fun prune(context: Context) = prune(dir(context), alsoParts = !ModelDownloader.isRunning)
+
+    /** `alsoParts` が false のときは、取りかけ（実行中のダウンロード）は消さない。 */
+    internal fun prune(d: File, alsoParts: Boolean) {
+        val keep = active(d)?.file?.name ?: return
+        d.listFiles()
+            ?.filter { it.isFile && it.name != keep && (it.name.endsWith(".gguf") || (alsoParts && it.name.endsWith(".part"))) }
             ?.forEach { it.delete() }
     }
 }

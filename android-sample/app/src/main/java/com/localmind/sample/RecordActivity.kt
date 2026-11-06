@@ -241,7 +241,15 @@ class RecordActivity : Activity() {
                 result.onSuccess { report -> if (report != null) showMinutes(report) }
                     .onFailure {
                         if (debuggable) android.util.Log.w("LMSample", "minutes failure: $it", it)
-                        screen.note(MinutesJob.userMessage(it, "議事録を作れませんでした"), ok = false)
+                        val msg = MinutesJob.userMessage(it, "議事録を作れませんでした")
+                        screen.note(msg, ok = false)
+                        // モデルが読み込めないときは、モデルを選び直せるようにする
+                        if (it is uniffi.lm_llm_ffi.LlmException.Integrity || it is uniffi.lm_llm_ffi.LlmException.Engine) {
+                            AlertDialog.Builder(this).setTitle("議事録を作れませんでした").setMessage(msg)
+                                .setPositiveButton("閉じる", null)
+                                .setNeutralButton("モデルを変更") { _, _ -> offerModelDownload(this) {} }
+                                .show()
+                        }
                     }
             }
         }
@@ -254,6 +262,7 @@ class RecordActivity : Activity() {
             .setTitle("議事録")
             .setMessage(if (text.isEmpty()) "項目を抽出できませんでした。" else text)
             .setPositiveButton("閉じる", null)
+            .setNegativeButton("モデルを変更") { _, _ -> offerModelDownload(this) {} }
             .setNeutralButton("共有") { _, _ ->
                 startActivity(
                     android.content.Intent.createChooser(

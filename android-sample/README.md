@@ -1,6 +1,6 @@
 # LocalMind Android サンプル
 
-`liblm_ffi.so`（Rust コア）を Kotlin から呼ぶ最小のアプリ。起動すると自己テストを 2 段階で実行し（基本 13 項目 + 同梱の実モデル e5 の 7 項目）、
+`liblm_ffi.so`（Rust コア）を Kotlin から呼ぶ最小のアプリ。起動すると自己テストを 2 段階で実行し（基本 14 項目 + 同梱の実モデル e5 の 7 項目）、
 結果を画面と logcat（タグ `LMSample`）に出す。UI は標準 View のみ（Compose なし）。
 
 - Rust 成果物は `../dist/android/{jniLibs,kotlin}` を直接参照する（コピーしない）。先にそちらを作ること
@@ -24,7 +24,7 @@ set JAVA_HOME=...jdk-17以上   set ANDROID_HOME=...\Android\Sdk
 gradlew.bat assembleDebug
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 adb shell am start -n com.localmind.sample/.MainActivity
-adb logcat -d -s LMSample:I          # "基本: ALL PASS (13)" と "実モデル(e5): ALL PASS (7)" が出れば成功（デバッグビルドのみ出力）
+adb logcat -d -s LMSample:I          # "基本: ALL PASS (14)" と "実モデル(e5): ALL PASS (7)" が出れば成功（デバッグビルドのみ出力）
 ```
 
 ## 確認する内容
