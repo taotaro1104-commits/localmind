@@ -1,6 +1,6 @@
 # LocalMind Android サンプル
 
-`liblm_ffi.so`（Rust コア）を Kotlin から呼ぶ最小のアプリ。起動すると自己テストを 2 段階で実行し（基本 10 項目 + 同梱の実モデル e5 の 7 項目）、
+`liblm_ffi.so`（Rust コア）を Kotlin から呼ぶ最小のアプリ。起動すると自己テストを 2 段階で実行し（基本 13 項目 + 同梱の実モデル e5 の 7 項目）、
 結果を画面と logcat（タグ `LMSample`）に出す。UI は標準 View のみ（Compose なし）。
 
 - Rust 成果物は `../dist/android/{jniLibs,kotlin}` を直接参照する（コピーしない）。先にそちらを作ること
@@ -24,7 +24,7 @@ set JAVA_HOME=...jdk-17以上   set ANDROID_HOME=...\Android\Sdk
 gradlew.bat assembleDebug
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 adb shell am start -n com.localmind.sample/.MainActivity
-adb logcat -d -s LMSample:I          # "基本: ALL PASS (10)" と "実モデル(e5): ALL PASS (7)" が出れば成功（デバッグビルドのみ出力）
+adb logcat -d -s LMSample:I          # "基本: ALL PASS (13)" と "実モデル(e5): ALL PASS (7)" が出れば成功（デバッグビルドのみ出力）
 ```
 
 ## 確認する内容
@@ -54,11 +54,15 @@ Kotlin 実装の `ForeignEmbedder` の注入、`dim()` の例外がクラッシ�
 ## 議事録（LLM）
 
 文字起こしの結果の「議事録を作る」は、`liblm_llm_ffi.so`（llama.cpp）で議事録を抽出する。モデル（約 1.1GB）は APK に
-同梱しない。無いときは、アプリが案内を出し、利用者が同意すると Hugging Face から取得する（`ModelDownloader.kt`）。
-接続先は https の `huggingface.co` と配信先の `*.cdn.hf.co`・`*.xethub.hf.co` だけで、SHA-256（`MinutesJob.kt`）が一致したときだけ
-`files/llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` に置く。途中で止まっても、続きから再開できる。
+同梱しない。無いときは、アプリが案内を出し、利用者が同意すると取得する（`ModelDownloader.kt`）。
+候補はコンボボックス（Qwen2.5 の 0.5B / 1.5B / 3B。大きさと SHA-256 は固定。接続先は `huggingface.co` と配信先の
+`*.cdn.hf.co`・`*.xethub.hf.co` だけ）から選ぶか、URL を直接入れる。直接入れた URL は https のみ・認証情報なしで、
+サイズが分かるものだけ受け付け、GGUF の先頭の印を確かめる。SHA-256 を入れたときは照合し、入れないときは取得した内容の
+SHA-256 を記録して使う（取得元を信頼できる場合だけ）。取得したモデルは `files/llm/` に置き、使うものを `active.txt` に
+記録する（ほかのモデルは消す）。途中で止まっても、続きから再開できる。
 このアプリがネットワークを使うのは、ここだけ（`INTERNET` 権限はこのため）。オフラインで使うなら、`adb push` のあと
-`adb shell run-as com.localmind.sample cp /data/local/tmp/<ファイル> files/llm/` で置いてもよい。
+`adb shell run-as com.localmind.sample cp /data/local/tmp/<ファイル> files/llm/` で置いてもよい
+（標準の 1.5B のファイル名なら、そのまま使える）。
 `scripts/build-android.sh` は `liblm_ffi.so` と `liblm_llm_ffi.so` の両方を作る。Kotlin のバインディングは両方とも
 同じビルド（`lm-ffi` は `--features "onnx whisper"`）から生成し直すこと。
 

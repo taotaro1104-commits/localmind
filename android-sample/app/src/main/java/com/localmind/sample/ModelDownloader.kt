@@ -3,6 +3,7 @@ package com.localmind.sample
 import android.content.Context
 import android.os.StatFs
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -13,18 +14,46 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ModelDownloadException(message: String) : Exception(message)
 
 /**
- * 議事録のモデル（GGUF）を取得する。接続先は固定した 1 か所（Hugging Face）だけ。リダイレクトは https かつ許可した
- * ホストへのものだけ辿る。中身は SHA-256 が固定した値と一致するときだけ置く。途中で止まっても、続きから再開できる。
+ * 取得するモデル。候補（[ModelSpec]）なら大きさと SHA-256 が固定されていて、接続先も取得元に限る。
+ * 利用者が入れた URL（[custom]）は、https で、サイズが分かるものだけ。SHA-256 を入れたときは照合し、
+ * 入れなかったときは、取得した内容の SHA-256 を「このモデル」として記録する（取得元を信頼できる場合だけ使うこと）。
+ */
+class ModelSource private constructor(
+    val url: URL,
+    val expectedBytes: Long?,
+    val expectedSha256: String?,
+    val fixedFileName: String?,
+    val trustedHostsOnly: Boolean,
+) {
+    companion object {
+        fun of(spec: ModelSpec) = ModelSource(URL(spec.url), spec.bytes, spec.sha256, spec.fileName, true)
+
+        /** 利用者が入れた URL。https 以外・認証情報つき・書式の誤りは拒否する。SHA-256 は小文字の 16 進 64 文字（任意）。 */
+        fun custom(urlText: String, sha256: String?): ModelSource {
+            val url = try { URL(urlText.trim()) } catch (_: Exception) { throw ModelDownloadException("URL の書式が正しくありません") }
+            if (url.protocol != "https" || url.userInfo != null || url.host.isNullOrEmpty()) {
+                throw ModelDownloadException("URL は https:// で始まるものだけ指定できます")
+            }
+            val sha = sha256?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+            if (sha != null && !ModelStore.isValidSha(sha)) {
+                throw ModelDownloadException("SHA-256 は 16 進 64 文字で入力してください")
+            }
+            return ModelSource(url, null, sha, null, false)
+        }
+    }
+}
+
+/**
+ * モデル（GGUF）を取得する。リダイレクトは https だけ辿り（候補は取得元のホストだけ）、サイズの上限を守り、
+ * GGUF の形式（先頭の印）と、SHA-256 を確かめてから置く。途中で止まっても、続きから再開できる。
  */
 object ModelDownloader {
-    private const val URL_TEXT =
-        "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/$LLM_FILE"
-
-    /** モデルの大きさ（バイト）。取得元が公開している値。これを超えて読まない。 */
-    const val EXPECTED_BYTES = 1_117_320_736L
     private const val MAX_REDIRECTS = 5
     private const val SPARE_BYTES = 200L * 1024 * 1024
-    // 実際の取得で使われるホストだけ（本体と、ファイルの配信先）。
+    private const val MIN_BYTES = 1024L * 1024
+    /** lm-llm が読み込める最大サイズ（8GiB）と同じ。 */
+    private const val MAX_BYTES = 8L * 1024 * 1024 * 1024
+    // 候補の取得で使われるホストだけ（本体と、ファイルの配信先）。
     private val HOSTS = listOf("huggingface.co", "cdn.hf.co", "xethub.hf.co")
 
     private val running = AtomicBoolean(false)
@@ -37,46 +66,65 @@ object ModelDownloader {
         stopFlag?.set(true)
     }
 
-    /** ホスト名が許可した取得元（本体、またはそのサブドメイン）か。 */
     internal fun isAllowedHost(host: String?): Boolean {
         val h = host?.lowercase() ?: return false
         return HOSTS.any { h == it || h.endsWith(".$it") }
     }
 
-    internal fun isSafeRedirect(url: URL): Boolean =
-        url.protocol == "https" && url.userInfo == null && isAllowedHost(url.host)
+    /** リダイレクト先として辿ってよいか（https・認証情報なし。候補は、許可したホストだけ）。 */
+    internal fun isSafeRedirect(url: URL, trustedOnly: Boolean = true): Boolean =
+        url.protocol == "https" && url.userInfo == null && !url.host.isNullOrEmpty() &&
+            (!trustedOnly || isAllowedHost(url.host))
 
-    /** 取りかけのファイル（再開に使う）。 */
-    fun partFile(context: Context): File = File(MinutesJob.modelFile(context).path + ".part")
+    /** 公開ホストからのリダイレクトで、LAN・自分自身（loopback・link-local・私設アドレス）へ向かわせない。 */
+    internal fun isLocalAddress(host: String): Boolean = try {
+        java.net.InetAddress.getAllByName(host).any {
+            it.isAnyLocalAddress || it.isLoopbackAddress || it.isLinkLocalAddress || it.isSiteLocalAddress ||
+                (it.address.size == 16 && (it.address[0].toInt() and 0xfe) == 0xfc) // fc00::/7
+        }
+    } catch (_: Exception) {
+        true // 解決できないものは、近づかない
+    }
 
-    /** 取りかけのバイト数（無ければ 0）。 */
-    fun partialBytes(context: Context): Long = partFile(context).takeIf { it.isFile }?.length() ?: 0L
+    /** 取りかけのファイル名は、取得元の URL ごとに決める（別のモデルの続きにしない）。 */
+    private fun partName(source: ModelSource): String {
+        val key = MessageDigest.getInstance("SHA-256").digest(source.url.toString().toByteArray())
+        return "dl-" + key.take(6).joinToString("") { "%02x".format(it) } + ".part"
+    }
+
+    fun partFile(context: Context, source: ModelSource) = File(ModelStore.dir(context), partName(source))
+
+    fun partialBytes(context: Context, source: ModelSource): Long =
+        partFile(context, source).takeIf { it.isFile }?.length() ?: 0L
 
     /**
-     * モデルを取得して置く。重いので別スレッドから呼ぶこと。すでに実行中なら false。
+     * モデルを取得して使うモデルにする。重いので別スレッドから呼ぶこと。すでに実行中なら false。
      * `onProgress(取得済み, 全体)` は、進むたびに呼ばれる。中止は [cancel]。
      */
-    fun download(context: Context, onProgress: (Long, Long) -> Unit): Boolean {
+    fun download(context: Context, source: ModelSource, onProgress: (Long, Long) -> Unit): Boolean {
         if (!running.compareAndSet(false, true)) return false
         val stop = AtomicBoolean(false)
         stopFlag = stop
         try {
-            val target = MinutesJob.modelFile(context)
-            val dir = target.parentFile ?: throw ModelDownloadException("保存先を作れません")
+            val dir = ModelStore.dir(context)
             if (!dir.isDirectory && !dir.mkdirs()) throw ModelDownloadException("保存先を作れません")
-            val part = partFile(context)
-            if (part.length() > EXPECTED_BYTES) part.delete()
-            val have = if (part.isFile) part.length() else 0L
-            if (StatFs(dir.path).availableBytes < EXPECTED_BYTES - have + SPARE_BYTES) {
-                throw ModelDownloadException("空き容量が足りません（約 1.3GB 必要です）")
-            }
-            fetch(part, stop, onProgress)
-            if (part.length() != EXPECTED_BYTES) throw ModelDownloadException("ダウンロードが途中で終わりました。もう一度お試しください")
-            if (sha256(part, stop) != LLM_SHA256) {
+            val part = partFile(context, source)
+            // ほかの取りかけは掃除する（容量のため）。SHA-256 が分からないモデルは、再開せず最初から取る。
+            dir.listFiles()?.filter { it.name.startsWith("dl-") && it.name.endsWith(".part") && it != part }?.forEach { it.delete() }
+            if (source.expectedSha256 == null) part.delete()
+            val total = fetch(source, part, dir, stop, onProgress)
+            if (part.length() != total) throw ModelDownloadException("ダウンロードが途中で終わりました。もう一度お試しください")
+            checkGguf(part)
+            val sha = sha256(part, stop)
+            val expected = source.expectedSha256
+            if (expected != null && sha != expected) {
                 part.delete()
-                throw ModelDownloadException("ダウンロードしたファイルが想定と違います。もう一度お試しください")
+                throw ModelDownloadException("ダウンロードしたファイルが想定と違います（SHA-256 が一致しません）")
             }
+            val name = source.fixedFileName ?: ("custom-" + sha.take(12) + ".gguf")
+            val target = File(dir, name)
             if (!part.renameTo(target)) throw ModelDownloadException("モデルを保存できませんでした")
+            ModelStore.activate(context, target, sha)
             return true
         } finally {
             stopFlag = null
@@ -84,15 +132,20 @@ object ModelDownloader {
         }
     }
 
-    private fun open(start: Long): HttpURLConnection {
-        var url = URL(URL_TEXT)
+    private fun open(source: ModelSource, start: Long): HttpURLConnection {
+        var url = source.url
         repeat(MAX_REDIRECTS + 1) {
-            if (!isSafeRedirect(url)) throw ModelDownloadException("想定外の接続先のため中止しました")
+            if (!isSafeRedirect(url, source.trustedHostsOnly)) throw ModelDownloadException("想定外の接続先のため中止しました")
+            // 入力された URL のホストは利用者の意思。そこから別のホストへ飛ばされた先が、LAN や自端末なら断る。
+            if (!source.trustedHostsOnly && !url.host.equals(source.url.host, ignoreCase = true) && isLocalAddress(url.host)) {
+                throw ModelDownloadException("ローカルネットワークへのリダイレクトのため中止しました")
+            }
             val c = url.openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
             c.connectTimeout = 15_000
             c.readTimeout = 30_000
             c.setRequestProperty("Accept-Encoding", "identity")
+            c.setRequestProperty("User-Agent", "LocalMind")
             if (start > 0) c.setRequestProperty("Range", "bytes=$start-")
             val code = c.responseCode
             if (code in 300..399) {
@@ -107,10 +160,24 @@ object ModelDownloader {
         throw ModelDownloadException("リダイレクトが多すぎます")
     }
 
-    private fun fetch(part: File, stop: AtomicBoolean, onProgress: (Long, Long) -> Unit) {
+    /** 全体のサイズ（バイト）を、応答から求める。分からない・範囲外なら失敗にする。 */
+    private fun totalBytes(conn: HttpURLConnection, code: Int, start: Long, source: ModelSource): Long {
+        val total = if (code == 206) {
+            val range = conn.getHeaderField("Content-Range").orEmpty()
+            if (!range.startsWith("bytes $start-")) return -1L
+            range.substringAfterLast('/').toLongOrNull() ?: -1L
+        } else {
+            conn.contentLengthLong
+        }
+        if (total !in MIN_BYTES..MAX_BYTES) return -1L
+        if (source.expectedBytes != null && total != source.expectedBytes) return -1L
+        return total
+    }
+
+    private fun fetch(source: ModelSource, part: File, dir: File, stop: AtomicBoolean, onProgress: (Long, Long) -> Unit): Long {
         var start = if (part.isFile) part.length() else 0L
-        if (start == EXPECTED_BYTES) return // 取り終わっている（検証だけ行う）
-        val conn = try { open(start) } catch (e: ModelDownloadException) { throw e } catch (_: javax.net.ssl.SSLException) {
+        if (source.expectedBytes != null && start > source.expectedBytes) { part.delete(); start = 0L }
+        val conn = try { open(source, start) } catch (e: ModelDownloadException) { throw e } catch (_: javax.net.ssl.SSLException) {
             throw ModelDownloadException("安全な接続を確立できませんでした（回線や証明書に問題があるかもしれません）")
         } catch (_: IOException) {
             throw ModelDownloadException("ネットワークに接続できません")
@@ -119,39 +186,46 @@ object ModelDownloader {
             val code = conn.responseCode
             if (code == 416) { part.delete(); throw ModelDownloadException("取りかけのファイルを破棄しました。もう一度お試しください") }
             if (code != 200 && code != 206) throw ModelDownloadException("ダウンロードできません（サーバーの応答 $code）")
-            if (code == 200) {
-                start = 0L // 再開を受け付けない場合は、最初から
-                if (StatFs(part.parentFile!!.path).availableBytes < EXPECTED_BYTES + SPARE_BYTES) {
-                    throw ModelDownloadException("空き容量が足りません（約 1.3GB 必要です）")
-                }
-            } else if (conn.getHeaderField("Content-Range")?.startsWith("bytes $start-") != true) {
-                part.delete()
-                throw ModelDownloadException("サーバーの応答が想定と違います。もう一度お試しください")
+            if (code == 200) start = 0L // 再開を受け付けない場合は、最初から
+            val total = totalBytes(conn, code, start, source)
+            if (total < 0) {
+                if (code == 206) part.delete()
+                throw ModelDownloadException("サイズを確認できないか、想定と違うため中止しました")
             }
-            if (conn.contentLengthLong > EXPECTED_BYTES - start) {
-                part.delete()
-                throw ModelDownloadException("想定より大きいため中止しました")
+            if (StatFs(dir.path).availableBytes < total - start + SPARE_BYTES) {
+                throw ModelDownloadException("空き容量が足りません（あと約 ${(total - start + SPARE_BYTES) / (1024 * 1024)}MB 必要です）")
             }
             conn.inputStream.use { input ->
-                java.io.FileOutputStream(part, start > 0).use { out ->
+                FileOutputStream(part, start > 0).use { out ->
                     val buf = ByteArray(256 * 1024)
-                    var total = start
-                    onProgress(total, EXPECTED_BYTES)
+                    var done = start
+                    onProgress(done, total)
                     while (true) {
                         if (stop.get()) throw ModelDownloadException("中止しました（取りかけは残します）")
                         val n = try { input.read(buf) } catch (_: IOException) {
                             throw ModelDownloadException("通信が途切れました。もう一度押すと続きから再開します")
                         }
                         if (n < 0) break
-                        total += n
-                        if (total > EXPECTED_BYTES) { part.delete(); throw ModelDownloadException("想定より大きいため中止しました") }
+                        done += n
+                        if (done > total) { part.delete(); throw ModelDownloadException("想定より大きいため中止しました") }
                         out.write(buf, 0, n)
-                        onProgress(total, EXPECTED_BYTES)
+                        onProgress(done, total)
                     }
                 }
             }
+            return total
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /** 先頭が GGUF の印か（形式の違うファイルを、置く前に断る）。 */
+    private fun checkGguf(file: File) {
+        val head = ByteArray(4)
+        val n = file.inputStream().use { it.read(head) }
+        if (n != 4 || String(head, Charsets.ISO_8859_1) != "GGUF") {
+            file.delete()
+            throw ModelDownloadException("GGUF 形式のファイルではありません")
         }
     }
 

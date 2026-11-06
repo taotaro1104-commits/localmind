@@ -227,7 +227,7 @@ class RecordActivity : Activity() {
             screen.note("文字起こしや録音が終わってからお試しください", ok = false)
             return
         }
-        if (!MinutesJob.modelFile(applicationContext).isFile) {
+        if (MinutesJob.activeModel(applicationContext) == null) {
             offerModelDownload(this) { makeMinutes(recordingId, segments) }
             return
         }

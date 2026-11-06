@@ -122,5 +122,30 @@ fun runSelfTest(dir: File): List<Check> {
             bad.filter { ModelDownloader.isSafeRedirect(java.net.URL(it)) }
         if (wrong.isEmpty()) null else "判定が違う: ${wrong.size} 件"
     }
+    results += check("モデル取得: 直接入れた URL は https のみ・認証情報なし・SHA-256 は書式を確かめる") {
+        fun accepted(url: String, sha: String? = null) = try { ModelSource.custom(url, sha); true } catch (_: ModelDownloadException) { false }
+        val wrong = listOf(
+            accepted("https://example.com/m.gguf"),
+            !accepted("http://example.com/m.gguf"),
+            !accepted("https://user:pw@example.com/m.gguf"),
+            !accepted("ftp://example.com/m.gguf"),
+            !accepted("file:///data/m.gguf"),
+            !accepted("not a url"),
+            !accepted("https://example.com/m.gguf", "xyz"),
+            accepted("https://example.com/m.gguf", "a".repeat(64)),
+        ).count { !it }
+        if (wrong == 0) null else "判定が違う: $wrong 件"
+    }
+    results += check("モデル取得: 保存するファイル名はパスを含まない .gguf だけ") {
+        val ok = listOf("qwen2.5-1.5b-instruct-q4_k_m.gguf", "custom-0123456789ab.gguf")
+        val bad = listOf("../x.gguf", "a/b.gguf", "..gguf", "x.bin", "", "a\b.gguf", ".." + ".gguf")
+        val wrong = ok.filterNot { ModelStore.isValidName(it) } + bad.filter { ModelStore.isValidName(it) }
+        if (wrong.isEmpty()) null else "判定が違う: ${wrong.size} 件"
+    }
+    results += check("モデル取得: LAN・自端末のアドレスは、リダイレクト先として断る") {
+        val local = listOf("127.0.0.1", "10.0.0.5", "192.168.1.1", "172.16.0.9", "169.254.1.1", "[::1]", "[fd00::1]", "0.0.0.0")
+        val wrong = local.filterNot { ModelDownloader.isLocalAddress(it) } + listOf("8.8.8.8").filter { ModelDownloader.isLocalAddress(it) }
+        if (wrong.isEmpty()) null else "判定が違う: $wrong"
+    }
     return results
 }
