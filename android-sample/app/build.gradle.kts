@@ -28,6 +28,27 @@ android {
     // 同梱モデル: dist/android/assets/e5-small/（取得方法は ../README.md）
     sourceSets["main"].assets.directories.add("../../dist/android/assets")
 
+    // 配布用の署名。鍵とパスワードはリポジトリに入れず、環境変数で渡す（LM_KEYSTORE / LM_KEYSTORE_PASSWORD /
+    // LM_KEY_ALIAS / LM_KEY_PASSWORD）。未設定なら、署名なしの release になる（そのままでは端末に入らない）。
+    val keystorePath = System.getenv("LM_KEYSTORE")
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("LM_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("LM_KEY_ALIAS")
+                keyPassword = System.getenv("LM_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            // JNA と UniFFI はリフレクションで名前を引くので、縮小（R8）はしない。
+            isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
