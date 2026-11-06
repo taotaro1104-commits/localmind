@@ -83,14 +83,7 @@ object ModelDownloader {
             (!trustedOnly || isAllowedHost(url.host))
 
     /** 公開ホストからのリダイレクトで、LAN・自分自身（loopback・link-local・私設アドレス）へ向かわせない。 */
-    internal fun isLocalAddress(host: String): Boolean = try {
-        java.net.InetAddress.getAllByName(host).any {
-            it.isAnyLocalAddress || it.isLoopbackAddress || it.isLinkLocalAddress || it.isSiteLocalAddress ||
-                (it.address.size == 16 && (it.address[0].toInt() and 0xfe) == 0xfc) // fc00::/7
-        }
-    } catch (_: Exception) {
-        true // 解決できないものは、近づかない
-    }
+    internal fun isLocalAddress(host: String): Boolean = !NetGuard.resolvesOnlyToPublic(host) // 解決できないものも、近づかない
 
     /** 取りかけのファイル名は、取得元の URL ごとに決める（別のモデルの続きにしない）。 */
     private fun partName(source: ModelSource): String {

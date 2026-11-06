@@ -559,3 +559,157 @@ fn a_tie_with_the_top_is_kept_and_a_single_hit_is_returned_as_is() {
     assert_eq!(one.citations.len(), 1);
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn documents_carry_a_group_that_can_be_changed_without_touching_the_index() {
+    let dir = temp_dir();
+    let ws = workspace(&dir);
+    ws.add_with(
+        "a",
+        "就業規則",
+        Format::Markdown,
+        REGULATIONS,
+        Some(" 人事 "),
+    )
+    .unwrap();
+    ws.add("b", "メモ", Format::Text, "ただのメモです").unwrap();
+    let list = ws.list().unwrap();
+    assert_eq!(list[0].group, "人事", "前後の空白は除く");
+    assert_eq!(list[1].group, "", "指定が無ければ未分類");
+
+    assert!(ws.set_group("b", "個人").unwrap());
+    assert!(!ws.set_group("none", "個人").unwrap(), "無い文書は false");
+    assert_eq!(ws.list().unwrap()[1].group, "個人");
+    // グループを変えても、検索は変わらない
+    let r = ws.search("出張の経費精算はいつまで", 3).unwrap();
+    assert!(r.found && r.citations[0].doc_id == "a");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn replacing_a_document_keeps_its_group_unless_a_new_one_is_given() {
+    let dir = temp_dir();
+    let ws = workspace(&dir);
+    ws.add_with("a", "題", Format::Text, "古い", Some("人事"))
+        .unwrap();
+    ws.add("a", "題", Format::Text, "新しい").unwrap();
+    assert_eq!(ws.list().unwrap()[0].group, "人事");
+    ws.add_with("a", "題", Format::Text, "さらに新しい", Some(""))
+        .unwrap();
+    assert_eq!(ws.list().unwrap()[0].group, "", "空を渡せば未分類に戻せる");
+    ws.add_with("a", "題", Format::Text, "もう一度", Some("経理"))
+        .unwrap();
+    assert_eq!(ws.list().unwrap()[0].group, "経理");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn bad_group_names_are_refused_before_anything_is_written() {
+    let dir = temp_dir();
+    let ws = workspace(&dir);
+    for bad in ["a\nb", "あ".repeat(41).as_str()] {
+        assert!(matches!(
+            ws.add_with("a", "題", Format::Text, "x", Some(bad)),
+            Err(WorkspaceError::InvalidTitle(_))
+        ));
+        assert!(ws.set_group("a", bad).is_err());
+    }
+    assert!(ws.list().unwrap().is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn searching_within_a_group_keeps_only_that_groups_hits() {
+    let dir = temp_dir();
+    let ws = workspace(&dir);
+    ws.add_with(
+        "hr",
+        "就業規則",
+        Format::Markdown,
+        REGULATIONS,
+        Some("人事"),
+    )
+    .unwrap();
+    ws.add_with(
+        "acc",
+        "経理規程",
+        Format::Markdown,
+        "# 経理規程\n\n## 経費\n\n出張の経費精算は帰着後5営業日以内に申請する。\n",
+        Some("経理"),
+    )
+    .unwrap();
+    ws.add_with(
+        "none",
+        "メモ",
+        Format::Text,
+        "出張の経費精算の覚え書き",
+        None,
+    )
+    .unwrap();
+    let q = "出張の経費精算はいつまでに申請しますか";
+
+    let all: Vec<String> = ws
+        .search(q, 10)
+        .unwrap()
+        .citations
+        .into_iter()
+        .map(|c| c.doc_id)
+        .collect();
+    assert!(all.contains(&"hr".to_string()) && all.contains(&"acc".to_string()));
+
+    for (group, expected) in [("人事", "hr"), ("経理", "acc"), ("", "none")] {
+        let r = ws.search_in(q, 10, Some(group)).unwrap();
+        assert!(r.found, "{group}");
+        assert!(
+            r.citations.iter().all(|c| c.doc_id == expected),
+            "{group}: {:?}",
+            r.citations.iter().map(|c| &c.doc_id).collect::<Vec<_>>()
+        );
+    }
+    // 存在しないグループは、何も見つからない（ほかのグループの結果は出ない）
+    let r = ws.search_in(q, 10, Some("営業")).unwrap();
+    assert!(!r.found && r.citations.is_empty());
+    // k は絞ったあとの件数に効く
+    assert_eq!(ws.search_in(q, 1, Some("人事")).unwrap().citations.len(), 1);
+    assert!(ws.search_in(q, 3, Some("a\nb")).is_err());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_scoped_search_never_turns_a_global_miss_into_an_answer() {
+    let dir = temp_dir();
+    // 足切りを厳しくして、1 位と同じ強さの命中だけを残す
+    let ws = workspace(&dir).with_relevance_margin(0.0);
+    ws.add_with(
+        "hr",
+        "就業規則",
+        Format::Markdown,
+        REGULATIONS,
+        Some("人事"),
+    )
+    .unwrap();
+    ws.add_with(
+        "acc",
+        "経理メモ",
+        Format::Text,
+        "請求書の発行は月末にまとめて行います",
+        Some("経理"),
+    )
+    .unwrap();
+    let q = "年次有給休暇はいつ付与されますか";
+    assert!(ws.search_in(q, 5, Some("人事")).unwrap().found);
+    // 絞った結果には、指定したグループの資料だけが入る（語彙だけで拾われた命中は、足切りの対象外）
+    let r = ws.search_in(q, 5, Some("経理")).unwrap();
+    assert!(
+        r.citations.iter().all(|c| c.doc_id == "acc"),
+        "{:?}",
+        r.citations
+    );
+    // 全体で見つからない質問は、どのグループに絞っても見つからない
+    let none = "宇宙旅行の費用はいくらですか";
+    assert!(!ws.search(none, 5).unwrap().found);
+    for g in ["人事", "経理", ""] {
+        assert!(!ws.search_in(none, 5, Some(g)).unwrap().found, "{g}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

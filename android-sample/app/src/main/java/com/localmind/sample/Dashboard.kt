@@ -127,7 +127,7 @@ class Dashboard(private val context: Context) {
     }
 
     /** すべての段階が終わった。合格していれば、検索画面へ進むボタンを出す。 */
-    fun done(onOpenSearch: () -> Unit, onOpenRecord: () -> Unit) {
+    fun done(onOpenSearch: () -> Unit, onOpenRecord: () -> Unit, onOpenAsk: () -> Unit) {
         running = false
         render()
         if (failed == 0) {
@@ -149,11 +149,21 @@ class Dashboard(private val context: Context) {
                 contentDescription = "録音画面を開く"
                 setOnClickListener { onOpenRecord() }
             }
+            val ask = label(16f, Palette.pass, bold = true).apply {
+                text = "AI に質問する"
+                gravity = Gravity.CENTER
+                setPadding(px(22), px(13), px(22), px(13))
+                background = GradientDrawable().apply { setColor(Palette.white) }
+                isClickable = true
+                contentDescription = "質問画面を開く"
+                setOnClickListener { onOpenAsk() }
+            }
             val buttons = LinearLayout(context).apply {
                 addView(open, LinearLayout.LayoutParams(-2, -2))
                 addView(record, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(12) })
             }
             banner.addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20) })
+            banner.addView(ask, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(12) })
         }
     }
 

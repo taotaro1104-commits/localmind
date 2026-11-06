@@ -17,6 +17,7 @@ fn doc(id: &str, text: &str) -> StoredDoc {
         id: id.into(),
         title: "題名".into(),
         format: Format::Markdown,
+        group: String::new(),
         text: text.into(),
     }
 }
@@ -297,4 +298,72 @@ fn byte_len_refuses_ids_that_could_leave_the_directory() {
     let store = DocStore::new(&dir);
     assert_eq!(store.byte_len("../x"), None);
     assert_eq!(store.byte_len("a/b"), None);
+}
+
+#[test]
+fn the_group_round_trips_and_old_files_without_one_are_ungrouped() {
+    let dir = temp_dir("group");
+    let store = DocStore::new(&dir);
+    let mut d = doc("a", "本文");
+    d.group = "規程".into();
+    store.save(&d).unwrap();
+    assert_eq!(store.load("a").unwrap().group, "規程");
+    // 古い形式（group の行が無い）は、未分類として読める
+    fs::write(
+        dir.join("old.doc"),
+        "LMDOC1\nformat=text\ntitle=古い\n\n古い本文",
+    )
+    .unwrap();
+    let old = store.load("old").unwrap();
+    assert_eq!((old.group.as_str(), old.text.as_str()), ("", "古い本文"));
+    // 新しい形式の本文は、group の行を飛ばして読まない
+    fs::write(
+        dir.join("new.doc"),
+        "LMDOC2\nformat=text\ntitle=新\ngroup=\n\ngroup=本文の一部",
+    )
+    .unwrap();
+    assert_eq!(store.load("new").unwrap().text, "group=本文の一部");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn groups_must_be_short_single_visible_lines() {
+    assert_eq!(check_group("  営業  ").unwrap(), "営業");
+    assert_eq!(check_group("").unwrap(), "");
+    assert!(check_group(&"あ".repeat(MAX_GROUP_CHARS)).is_ok());
+    for bad in [
+        "あ".repeat(MAX_GROUP_CHARS + 1),
+        "a\nb".to_string(),
+        "a\u{202E}b".to_string(),
+        "a\0b".to_string(),
+    ] {
+        assert!(check_group(&bad).is_err(), "{bad:?}");
+    }
+    let dir = temp_dir("badgroup");
+    let mut d = doc("a", "x");
+    d.group = "a\nb".into();
+    assert!(DocStore::new(&dir).save(&d).is_err());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_damaged_group_line_is_corrupt() {
+    let dir = temp_dir("badline");
+    let store = DocStore::new(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (i, raw) in [
+        "LMDOC2\nformat=text\ntitle=t\n\nx",
+        "LMDOC2\nformat=text\ntitle=t\nname=g\n\nx",
+        "LMDOC2\nformat=text\ntitle=t\ngroup=a\u{202E}b\n\nx",
+    ]
+    .iter()
+    .enumerate()
+    {
+        fs::write(dir.join(format!("d{i}.doc")), raw).unwrap();
+        assert!(
+            matches!(store.load(&format!("d{i}")), Err(WorkspaceError::Corrupt)),
+            "{raw:?}"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
 }

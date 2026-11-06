@@ -176,7 +176,7 @@ class RecordActivity : Activity() {
             screen.note("中止しています…（今の処理が止まるまで待ちます）", ok = true)
             return
         }
-        if (RecorderState.active || MinutesJob.isRunning) {
+        if (RecorderState.active || MinutesJob.isRunning || AskJob.isRunning) {
             screen.note("録音中は文字起こしできません。止めてからお試しください", ok = false)
             return
         }
@@ -223,8 +223,8 @@ class RecordActivity : Activity() {
             screen.note("中止しています…", ok = true)
             return
         }
-        if (SpeechJob.isRunning || RecorderState.active) {
-            screen.note("文字起こしや録音が終わってからお試しください", ok = false)
+        if (SpeechJob.isRunning || RecorderState.active || AskJob.isRunning) {
+            screen.note("文字起こし・録音・質問への回答が終わってからお試しください", ok = false)
             return
         }
         if (MinutesJob.activeModel(applicationContext) == null) {
@@ -247,7 +247,7 @@ class RecordActivity : Activity() {
                         if (it is uniffi.lm_llm_ffi.LlmException.Integrity || it is uniffi.lm_llm_ffi.LlmException.Engine) {
                             AlertDialog.Builder(this).setTitle("議事録を作れませんでした").setMessage(msg)
                                 .setPositiveButton("閉じる", null)
-                                .setNeutralButton("モデルを変更") { _, _ -> offerModelDownload(this) {} }
+                                .setNeutralButton("モデルを変更") { _, _ -> showModelSwitcher(this) }
                                 .show()
                         }
                     }
@@ -262,7 +262,7 @@ class RecordActivity : Activity() {
             .setTitle("議事録")
             .setMessage(if (text.isEmpty()) "項目を抽出できませんでした。" else text)
             .setPositiveButton("閉じる", null)
-            .setNegativeButton("モデルを変更") { _, _ -> offerModelDownload(this) {} }
+            .setNegativeButton("モデルを変更") { _, _ -> showModelSwitcher(this) }
             .setNeutralButton("共有") { _, _ ->
                 startActivity(
                     android.content.Intent.createChooser(

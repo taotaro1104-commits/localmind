@@ -13,6 +13,9 @@
 
 llama.cpp / whisper.cpp / AICore / 実埋め込みモデルは trait で抽象化済みで未統合。
 
+- `lm-workspace::html` — Web ページ（HTML）から本文と題名を取り出す小さな字句解析（通信はしない。取得は Kotlin の
+  `UrlImporter`）。`script`/`style` は中身を読まずに飛ばし、ナビゲーションなどは捨て、見出しは Markdown の `#` にする。
+  資料にはグループ名（`docstore` の `group=` 行。`LMDOC1` も読める）を付けられる。
 - `lm-workspace` — 資料（テキスト・Markdown）の取り込みと、位置つきの引用。見出し・段落で分割し、検索結果に
   文書・見出しの並び・行番号・抜粋の出典をつける。原本を保存し、チャンクは原本から決まった手順で作る
   （位置を別に保存しない。分割方式を変えたら `CHUNKER_VERSION` を上げる）。保存先は 1 文書 1 ファイル。
@@ -31,6 +34,9 @@ llama.cpp / whisper.cpp / AICore / 実埋め込みモデルは trait で抽象�
   再確認する（llama.cpp はパスから開くため、差し替えを完全には防げない。モデルはアプリ専用領域に置くこと）。生成は 900 秒で
   打ち切り、中止できる。`llama` feature でネイティブ（cmake と libclang が要る）をビルドする。配布するときは、llama.cpp・
   ggml（MIT）とモデルのライセンス表記を同梱すること。
+  `lm_llm::qa` は、資料なしの質問応答（端末の LLM だけ、または Web 検索の結果つき）。検索の要否の判断・回答のプロンプト・
+  出典番号の検証・Wikipedia の応答の解釈（URL は `https://ja.wikipedia.org/` だけ）を担い、ネットワークには出ない
+  （検索は Kotlin の `WebSearch.kt` が行う）。文法が空のときは自由な文章を生成する。
 - `lm-llm-ffi` — `lm-llm` を Kotlin へ公開する UniFFI ライブラリ（`MinutesEngine`）。whisper.cpp と llama.cpp は、どちらも
   ggml を同梱していて 1 つのバイナリにリンクすると重複定義になるため、`lm-ffi`（`liblm_ffi.so`）とは別の
   `liblm_llm_ffi.so` にしている。Kotlin のバインディングは別に生成する:

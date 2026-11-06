@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 通信は https のみ（モデルの取得だけが使う）。ユーザーが入れた証明書は信頼しない。 -->
+<!-- 通信は https のみ（モデルの取得と、利用者が選んだ Wikipedia 検索だけが使う）。ユーザーが入れた証明書は信頼しない。 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>

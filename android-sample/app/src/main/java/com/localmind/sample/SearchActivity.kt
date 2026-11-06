@@ -40,7 +40,7 @@ class SearchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
-        screen = SearchScreen(this, ::runSearch, ::addTyped, ::confirmRemove, ::pickFile)
+        screen = SearchScreen(this, ::runSearch, ::addTyped, ::confirmRemove, ::pickFile, ::addUrl, ::setGroup, ::confirmRemoveGroup)
         setContentView(screen.view)
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
@@ -66,7 +66,7 @@ class SearchActivity : Activity() {
                 // 初回だけ、サンプルの資料を登録する（あとで削除した資料を、開くたびに戻さない）。
                 val marker = File(context.filesDir, "workspace-seeded")
                 if (!marker.exists()) {
-                    SAMPLE_DOCS.forEach { e.addDocument(it.id, it.title, DocFormat.MARKDOWN, it.markdown) }
+                    SAMPLE_DOCS.forEach { e.addDocument(it.id, it.title, DocFormat.MARKDOWN, it.markdown, "サンプル") }
                     marker.writeText("1")
                 }
                 e to e.documents()
@@ -96,8 +96,9 @@ class SearchActivity : Activity() {
 
     private fun runSearch(query: String) {
         screen.searching()
-        inBackground("lm-search", { it.search(query, 3u) }) { outcome ->
-            outcome.onSuccess { screen.show(query, it) }
+        val scope = screen.scope() // 切り替えているグループに絞る（null ならすべて）
+        inBackground("lm-search", { it.searchInGroup(query, 3u, scope) }) { outcome ->
+            outcome.onSuccess { screen.show(query, it, scope) }
                 .onFailure { screen.failed(userMessage(it, debuggable, "検索できませんでした")) }
         }
     }
@@ -109,18 +110,37 @@ class SearchActivity : Activity() {
     private fun addDocument(doc: Imported, clearForm: Boolean = false, then: () -> Unit = {}) {
         screen.busy(true)
         screen.note("追加しています…", ok = true)
+        val group = screen.group() // 追加先のグループ（空なら未分類）
         inBackground("lm-add", {
             val id = "doc-${System.currentTimeMillis()}-${sequence.getAndIncrement()}"
-            val n = it.addDocument(id, doc.title, doc.format, doc.text)
+            val n = it.addDocument(id, doc.title, doc.format, doc.text, group)
             n to it.documents()
         }) { outcome ->
             screen.busy(false)
             outcome.onSuccess { (n, list) ->
                 screen.documents(list)
-                screen.note("「${doc.title}」を追加しました（断片 $n 件）", ok = true)
+                val where = if (group.isEmpty()) "" else "グループ「$group」・"
+                screen.note("「${doc.title}」を追加しました（$where" + "断片 $n 件）", ok = true)
                 if (clearForm) screen.clearForm()
             }.onFailure { screen.note(userMessage(it, debuggable, "追加できませんでした"), ok = false) }
             then()
+        }
+    }
+
+    /** URL のページを取得して、資料に追加する（取得は別スレッド。1 つずつ）。 */
+    private fun addUrl(url: String) {
+        load(message = "ページを取得しています…", clearForm = true) { UrlImporter.fetch(url) }
+    }
+
+    /** 資料のグループを変える。 */
+    private fun setGroup(id: String, group: String) {
+        screen.busy(true)
+        inBackground("lm-group", { it.setDocumentGroup(id, group); it.documents() }) { outcome ->
+            screen.busy(false)
+            outcome.onSuccess {
+                screen.documents(it)
+                screen.note(if (group.isEmpty()) "未分類にしました" else "グループ「$group」にしました", ok = true)
+            }.onFailure { screen.note(userMessage(it, debuggable, "グループを変えられませんでした"), ok = false) }
         }
     }
 
@@ -165,27 +185,27 @@ class SearchActivity : Activity() {
      * ファイルや共有の読み込みを別スレッドで行い、取り込む。読み込みは 1 つずつ（読み込み中に届いた別の共有は、
      * 断って知らせる）。準備前なら、上限つきの待ち行列に入れて、準備ができたら取り込む。
      */
-    private fun load(read: () -> Imported) {
+    private fun load(message: String = "読み込んでいます…", clearForm: Boolean = false, read: () -> Imported) {
         if (importing) {
             screen.note("別のファイルを読み込み中です。終わってから、もう一度お試しください", ok = false)
             return
         }
         importing = true
-        screen.note("読み込んでいます…", ok = true)
+        screen.note(message, ok = true)
         importer.execute {
             val result = runCatching(read)
             runOnUiThread {
                 importing = false
                 if (isDestroyed) return@runOnUiThread
-                result.onSuccess(::accept)
+                result.onSuccess { accept(it, clearForm) }
                     .onFailure { screen.note(userMessage(it, debuggable, "読み込めませんでした"), ok = false) }
             }
         }
     }
 
-    private fun accept(doc: Imported) {
+    private fun accept(doc: Imported, clearForm: Boolean = false) {
         when {
-            engine != null -> addDocument(doc)
+            engine != null -> addDocument(doc, clearForm = clearForm)
             pending.size >= MAX_QUEUED -> screen.note("準備中に受け付けられるのは $MAX_QUEUED 件までです", ok = false)
             else -> {
                 pending.addLast(doc)
@@ -204,6 +224,33 @@ class SearchActivity : Activity() {
             .show()
     }
 
+    /** グループの資料を、まとめて削除する（取り消せないので、件数を見せて確認する）。 */
+    private fun confirmRemoveGroup(group: String, docs: List<uniffi.lm_ffi.DocumentInfo>) {
+        val label = if (group.isEmpty()) UNGROUPED_LABEL else group
+        AlertDialog.Builder(this)
+            .setTitle("「$label」の資料を ${docs.size} 件すべて削除しますか？")
+            .setMessage("これらの資料と、検索用のデータが消えます。元に戻せません。")
+            .setPositiveButton("すべて削除") { _, _ -> removeDocuments(docs.map { it.id }) }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun removeDocuments(ids: List<String>) {
+        screen.busy(true)
+        // 1 件ずつ試す（途中の失敗で残りを止めない）。成功しても失敗しても、一覧は最新にする。
+        inBackground("lm-remove-group", { e ->
+            val failed = ids.count { id -> runCatching { e.removeDocument(id) }.isFailure }
+            failed to e.documents()
+        }) { outcome ->
+            screen.busy(false)
+            outcome.onSuccess { (failed, list) ->
+                screen.documents(list)
+                if (failed == 0) screen.note("${ids.size} 件を削除しました", ok = true)
+                else screen.note("${ids.size - failed} 件を削除しました。${failed} 件は削除できませんでした", ok = false)
+            }.onFailure { screen.note(userMessage(it, debuggable, "削除できませんでした"), ok = false) }
+        }
+    }
+
     private fun removeDocument(id: String) {
         screen.busy(true)
         inBackground("lm-remove", { it.removeDocument(id); it.documents() }) { outcome ->
@@ -218,7 +265,8 @@ class SearchActivity : Activity() {
         val e = engine
         engine = null
         e?.close()
-        importer.shutdown()
+        UrlImporter.cancel()
+        importer.shutdownNow()
         super.onDestroy()
     }
 }

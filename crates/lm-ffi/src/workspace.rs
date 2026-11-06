@@ -42,7 +42,32 @@ pub struct DocumentInfo {
     pub id: String,
     pub title: String,
     pub format: DocFormat,
+    /// グループ名。空なら未分類。
+    pub group: String,
     pub chunks: u32,
+}
+
+/// Web ページ（HTML）から取り出した資料。
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HtmlPage {
+    /// ページの題名。無ければ空。
+    pub title: String,
+    /// Markdown に近い本文（見出しは `#`、箇条書きは `-`）。
+    pub markdown: String,
+    /// 本文が大きすぎて、後ろを切ったか。
+    pub truncated: bool,
+}
+
+/// HTML から、資料にする本文と題名を取り出す（`script`・`style`・ナビゲーションなどは捨てる）。通信はしない。
+/// 2 MiB より後ろは読まない。
+#[uniffi::export]
+pub fn html_to_markdown(html: String) -> HtmlPage {
+    let p = lm_workspace::html::extract(&html);
+    HtmlPage {
+        title: p.title,
+        markdown: p.markdown,
+        truncated: p.truncated,
+    }
 }
 
 /// 検索結果 1 件の出典。行番号は 1 始まりで、`end_line` を含む。
@@ -131,6 +156,8 @@ impl WorkspaceEngine {
     }
 
     /// 文書を追加する（同じ id があれば置き換える）。作った断片の数を返す。
+    /// `group` は資料のグループ名（40 文字まで。前後の空白は除く）。`None` なら、置き換えのときは元のグループを
+    /// 引き継ぎ、新しい資料は未分類。空文字は未分類にする。
     /// `id` は小文字の英数字・ハイフン・アンダースコアの 1〜64 文字（OS の予約名は不可）、本文は 256 KiB まで。
     /// 資料は 200 件・合計 16 MiB まで。保存したが検索の準備に失敗したときは、エラーの文言でそう分かる
     /// （`reindex` で直せる）。
@@ -140,8 +167,16 @@ impl WorkspaceEngine {
         title: String,
         format: DocFormat,
         text: String,
+        group: Option<String>,
     ) -> Result<u32, FfiError> {
-        Ok(self.inner.add(&id, &title, format.into(), &text)? as u32)
+        Ok(self
+            .inner
+            .add_with(&id, &title, format.into(), &text, group.as_deref())? as u32)
+    }
+
+    /// 文書のグループを変える（空なら未分類）。検索の索引は変わらない。文書が無ければ `false`。
+    pub fn set_document_group(&self, id: String, group: String) -> Result<bool, FfiError> {
+        Ok(self.inner.set_group(&id, &group)?)
     }
 
     /// 文書を消す。無ければ `false`。
@@ -159,6 +194,7 @@ impl WorkspaceEngine {
                 id: d.id,
                 title: d.title,
                 format: d.format.into(),
+                group: d.group,
                 chunks: d.chunks as u32,
             })
             .collect())
@@ -177,7 +213,19 @@ impl WorkspaceEngine {
 
     /// 質問で検索する。結果は近い順で、各件に出典がつく。`k` は 50 件までに丸める。
     pub fn search(&self, query: String, k: u32) -> Result<WorkspaceReport, FfiError> {
-        let r = self.inner.search(&query, k as usize)?;
+        self.search_in_group(query, k, None)
+    }
+
+    /// グループで絞って検索する（`Some("")` は未分類だけ。`None` は絞らない）。「見つかったか」と足切りは、すべての資料での
+    /// 検索の結果で決め、そこから指定したグループの命中だけを残す（絞ると、命中が減る・無くなることはあっても、
+    /// 全体で見つからない質問が見つかることはない）。`grounding` は、絞る前の全体の値。
+    pub fn search_in_group(
+        &self,
+        query: String,
+        k: u32,
+        group: Option<String>,
+    ) -> Result<WorkspaceReport, FfiError> {
+        let r = self.inner.search_in(&query, k as usize, group.as_deref())?;
         Ok(WorkspaceReport {
             found: r.found,
             grounding: r.grounding,

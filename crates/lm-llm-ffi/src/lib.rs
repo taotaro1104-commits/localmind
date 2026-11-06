@@ -5,13 +5,17 @@
 //! `lm-ffi` の `RecordingStore.export_minutes` でそのまま書き出せる。
 //! LLM の出力は信用せず、実在する発話を引用しない項目は議事録に入れない（`lm-ingest` の検証）。
 
+mod ask;
 mod engine;
 mod error;
 
+pub use ask::{max_question_chars, parse_wikipedia_sources, AnswerReport, SearchPlan, WebSource};
 pub use engine::{MinutesEngine, MinutesEntry, MinutesReport, SpokenLine};
 pub use error::LlmError;
 
 uniffi::setup_scaffolding!();
 
+#[cfg(test)]
+mod ask_tests;
 #[cfg(test)]
 mod tests;

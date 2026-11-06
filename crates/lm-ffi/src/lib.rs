@@ -22,7 +22,9 @@ pub use router::{decide_route, DeviceProfile, Route, Task};
 pub use search::{
     e5_search_config, ForeignEmbedder, SearchConfig, SearchEngine, SearchHit, SearchResult,
 };
-pub use workspace::{Citation, DocFormat, DocumentInfo, WorkspaceEngine, WorkspaceReport};
+pub use workspace::{
+    html_to_markdown, Citation, DocFormat, DocumentInfo, HtmlPage, WorkspaceEngine, WorkspaceReport,
+};
 
 #[cfg(feature = "whisper")]
 pub use speech::{SpeechEngine, SpeechProgress, SpeechQuality, SpokenSegment};

@@ -40,7 +40,8 @@ fn a_document_is_found_with_its_heading_and_line_numbers() {
             "rules".into(),
             "就業規則".into(),
             DocFormat::Markdown,
-            RULES.into()
+            RULES.into(),
+            None,
         )
         .unwrap(),
         2
@@ -65,6 +66,7 @@ fn a_question_with_no_answer_is_not_found() {
         "就業規則".into(),
         DocFormat::Markdown,
         RULES.into(),
+        None,
     )
     .unwrap();
     let r = ws.search("宇宙旅行の費用はいくらですか".into(), 3).unwrap();
@@ -81,6 +83,7 @@ fn documents_survive_reopening_and_can_be_listed_and_removed() {
             "就業規則".into(),
             DocFormat::Markdown,
             RULES.into(),
+            None,
         )
         .unwrap();
     }
@@ -92,6 +95,7 @@ fn documents_survive_reopening_and_can_be_listed_and_removed() {
             id: "rules".into(),
             title: "就業規則".into(),
             format: DocFormat::Markdown,
+            group: String::new(),
             chunks: 2
         }]
     );
@@ -109,7 +113,7 @@ fn bad_input_is_an_error_not_a_panic() {
     let d = Dirs::new("bad");
     let ws = d.open();
     let add = |id: &str, title: &str, text: &str| {
-        ws.add_document(id.into(), title.into(), DocFormat::Text, text.into())
+        ws.add_document(id.into(), title.into(), DocFormat::Text, text.into(), None)
     };
     assert!(matches!(
         add("../x", "題", "本文"),
@@ -148,6 +152,7 @@ fn reindex_restores_search_after_the_index_is_lost() {
             "就業規則".into(),
             DocFormat::Markdown,
             RULES.into(),
+            None,
         )
         .unwrap();
     }
@@ -156,4 +161,60 @@ fn reindex_restores_search_after_the_index_is_lost() {
     assert!(!ws.search("経費精算は何日以内".into(), 3).unwrap().found);
     assert!(ws.reindex().unwrap().is_empty());
     assert!(ws.search("経費精算は何日以内".into(), 3).unwrap().found);
+}
+
+#[test]
+fn groups_are_set_listed_and_kept_when_a_document_is_replaced() {
+    let d = Dirs::new("grp");
+    let ws = d.open();
+    ws.add_document(
+        "rules".into(),
+        "就業規則".into(),
+        DocFormat::Markdown,
+        RULES.into(),
+        Some("人事".into()),
+    )
+    .unwrap();
+    ws.add_document(
+        "memo".into(),
+        "メモ".into(),
+        DocFormat::Text,
+        "本文".into(),
+        None,
+    )
+    .unwrap();
+    let groups = |ws: &WorkspaceEngine| {
+        ws.documents()
+            .unwrap()
+            .into_iter()
+            .map(|d| (d.id, d.group))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        groups(&ws),
+        vec![("memo".into(), "".into()), ("rules".into(), "人事".into())]
+    );
+    assert!(ws.set_document_group("memo".into(), "個人".into()).unwrap());
+    assert!(!ws.set_document_group("zzz".into(), "個人".into()).unwrap());
+    assert!(ws.set_document_group("memo".into(), "a\nb".into()).is_err());
+    ws.add_document(
+        "rules".into(),
+        "就業規則".into(),
+        DocFormat::Markdown,
+        RULES.into(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(groups(&ws)[1].1, "人事", "置き換えても、グループは残る");
+}
+
+#[test]
+fn html_pages_become_titled_markdown() {
+    let p = html_to_markdown(
+        "<html><head><title>規程</title></head><body><h1>規程</h1><p>本文&amp;注意</p><script>x()</script></body></html>"
+            .into(),
+    );
+    assert_eq!(p.title, "規程");
+    assert_eq!(p.markdown, "# 規程\n\n本文&注意\n");
+    assert!(!p.truncated);
 }

@@ -14,7 +14,7 @@ use lm_search::grounding::SearchOutcome;
 use lm_search::{Hit, HybridSearcher, SearchError, SqliteStore};
 
 use crate::chunker::{split, Chunk, Format, CHUNKER_VERSION};
-use crate::docstore::{check_id, check_title, DocStore, StoredDoc, MIN_TMP_AGE};
+use crate::docstore::{check_group, check_id, check_title, DocStore, StoredDoc, MIN_TMP_AGE};
 use crate::error::WorkspaceError;
 
 /// 引用の抜粋の最大文字数。
@@ -41,6 +41,8 @@ pub struct DocInfo {
     pub id: String,
     pub title: String,
     pub format: Format,
+    /// 資料のグループ名。空なら未分類。
+    pub group: String,
     pub chunks: usize,
 }
 
@@ -138,7 +140,8 @@ impl Workspace {
         Ok(true)
     }
 
-    /// 文書を追加する（同じ id があれば置き換える）。作ったチャンクの数を返す。
+    /// 文書を追加する（同じ id があれば置き換える。置き換えるときは、元のグループを引き継ぐ）。
+    /// 作ったチャンクの数を返す。
     pub fn add(
         &self,
         id: &str,
@@ -146,10 +149,33 @@ impl Workspace {
         format: Format,
         text: &str,
     ) -> Result<usize, WorkspaceError> {
+        self.add_with(id, title, format, text, None)
+    }
+
+    /// [`Workspace::add`] に、グループを付ける。`group` が `None` なら、同じ id の文書があればそのグループを引き継ぎ、
+    /// 無ければ未分類。`Some("")` は未分類にする。
+    pub fn add_with(
+        &self,
+        id: &str,
+        title: &str,
+        format: Format,
+        text: &str,
+        group: Option<&str>,
+    ) -> Result<usize, WorkspaceError> {
         check_id(id)?;
         check_title(title)?;
+        let group = group.map(check_group).transpose()?;
         let chunks = split(text, format)?; // 何も書き込む前に、不正な入力を弾く
         let _guard = self.lock();
+        let group = match group {
+            Some(g) => g,
+            None => match self.docs.load(id) {
+                Ok(d) => d.group,
+                // 無い・壊れている文書の置き換えは、未分類から始める。入出力の失敗は、黙って捨てずに伝える
+                Err(WorkspaceError::NotFound | WorkspaceError::Corrupt) => String::new(),
+                Err(e) => return Err(e),
+            },
+        };
         self.check_quota(id, text.len())?;
         // 版の記録は、空のワークスペースへ最初の文書を入れるときだけ書く（古い索引が残っているかもしれない
         // ワークスペースに書くと、`ensure_current` が作り直しを飛ばしてしまう）。
@@ -160,6 +186,7 @@ impl Workspace {
             id: id.to_string(),
             title: title.to_string(),
             format,
+            group,
             text: text.to_string(),
         })?;
         self.index_chunks(id, &chunks).map_err(stale)?;
@@ -169,6 +196,21 @@ impl Workspace {
                 .map_err(|e| WorkspaceError::IndexOutOfDate(e.to_string()))?;
         }
         Ok(chunks.len())
+    }
+
+    /// 文書のグループを変える（空なら未分類）。検索の索引は変わらない。文書が無ければ `false`。
+    pub fn set_group(&self, id: &str, group: &str) -> Result<bool, WorkspaceError> {
+        check_id(id)?;
+        let group = check_group(group)?;
+        let _guard = self.lock();
+        let mut doc = match self.docs.load(id) {
+            Ok(d) => d,
+            Err(WorkspaceError::NotFound) => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        doc.group = group;
+        self.docs.save(&doc)?;
+        Ok(true)
     }
 
     /// 件数と合計サイズの上限を確かめる（同じ id の置き換えは、古い版の分を差し引く）。
@@ -228,6 +270,7 @@ impl Workspace {
                     id,
                     title: doc.title,
                     format: doc.format,
+                    group: doc.group,
                     chunks,
                 });
             }
@@ -267,87 +310,13 @@ impl Workspace {
         }
         Ok(skipped)
     }
-
-    /// 検索する。結果は近い順で、各件に出典（文書・見出し・行番号・抜粋）がつく。
-    /// `k` は [`MAX_RESULTS`] に丸める。
-    pub fn search(&self, query: &str, k: usize) -> Result<Report, WorkspaceError> {
-        let (outcome, semantic) = self
-            .searcher
-            .search_with_cosine(query, k.min(MAX_RESULTS))?;
-        let (hits, grounding) = match outcome {
-            SearchOutcome::Found { hits, grounding } => (hits, grounding),
-            SearchOutcome::NotFound { grounding } => {
-                return Ok(Report {
-                    found: false,
-                    grounding,
-                    citations: Vec::new(),
-                })
-            }
-        };
-        let hits = self.cut_weak_hits(query, hits, &semantic);
-        // 同じ文書の命中が複数あっても、原本の読み込みと分割は 1 回で済ませる。
-        let mut cache: HashMap<String, Option<(StoredDoc, Vec<Chunk>)>> = HashMap::new();
-        let mut citations = Vec::with_capacity(hits.len());
-        for hit in hits {
-            let Some((doc_id, seq)) = parse_chunk_id(&hit.id) else {
-                continue;
-            };
-            // 検索のあいだに文書が消された・壊れたときは、その件だけ出さない。
-            let loaded = cache.entry(doc_id.to_string()).or_insert_with(|| {
-                let doc = self.docs.load(doc_id).ok()?;
-                let chunks = split(&doc.text, doc.format).ok()?;
-                Some((doc, chunks))
-            });
-            let Some((doc, chunks)) = loaded else {
-                continue;
-            };
-            let Some(chunk) = chunks.iter().find(|c| c.seq == seq) else {
-                continue;
-            };
-            citations.push(Citation {
-                doc_id: doc.id.clone(),
-                title: doc.title.clone(),
-                heading_path: chunk.heading_path.clone(),
-                start_line: chunk.start_line,
-                end_line: chunk.end_line,
-                excerpt: excerpt(&chunk.text),
-                score: hit.score,
-            });
-        }
-        Ok(Report {
-            found: !citations.is_empty(),
-            grounding,
-            citations,
-        })
-    }
-}
-
-impl Workspace {
-    /// 1 位との cosine の差が [`Workspace::with_relevance_margin`] を超える結果を落とす（1 位は必ず残す）。
-    /// 次の場合は落とさない: 足切りが無効、結果が 1 件以下、質問に数字を含む（型番・条文番号などの語彙一致が
-    /// 強い質問は、cosine だけでは関連の強さを測れない）、cosine が分からない結果（意味検索の上位に無く、
-    /// 語彙の一致だけで拾われたもの）。
-    fn cut_weak_hits(&self, query: &str, hits: Vec<Hit>, semantic: &[Hit]) -> Vec<Hit> {
-        let margin = self.relevance_margin;
-        if hits.len() < 2 || margin.is_infinite() || query.chars().any(char::is_numeric) {
-            return hits;
-        }
-        let cosine: HashMap<&str, f32> =
-            semantic.iter().map(|h| (h.id.as_str(), h.score)).collect();
-        let Some(&top) = cosine.get(hits[0].id.as_str()) else {
-            return hits;
-        };
-        hits.into_iter()
-            .enumerate()
-            .filter(|(i, h)| *i == 0 || cosine.get(h.id.as_str()).is_none_or(|c| top - c <= margin))
-            .map(|(_, h)| h)
-            .collect()
-    }
 }
 
 fn stale(e: SearchError) -> WorkspaceError {
     WorkspaceError::IndexOutOfDate(e.to_string())
 }
+
+mod search;
 
 #[cfg(test)]
 mod tests;

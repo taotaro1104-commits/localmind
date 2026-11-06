@@ -1,7 +1,8 @@
 //! 文書の原本の保存。1 文書 1 ファイル（`<id>.doc`）。置き換えは一時ファイル経由で原子的に行う。
 //!
-//! ファイルの形式（テキスト）: 1 行目 `LMDOC1`、2 行目 `format=text|markdown`、3 行目 `title=<題名>`、
-//! 4 行目は空行、5 行目以降が本文。
+//! ファイルの形式（テキスト）: 1 行目 `LMDOC2`、2 行目 `format=text|markdown`、3 行目 `title=<題名>`、
+//! 4 行目 `group=<グループ名。空なら未分類>`、5 行目は空行、6 行目以降が本文。
+//! 古い `LMDOC1`（`group=` の行が無い）も読める（未分類として扱う）。
 //!
 //! 読み込み時の「確認してから開く」の間に、アプリ自身が別のファイルへ差し替える競合は防がない
 //! （保存先はアプリ専用で、書き込めるのはアプリだけという前提）。
@@ -15,13 +16,16 @@ use std::time::{Duration, SystemTime};
 use crate::chunker::{Format, MAX_DOC_BYTES};
 use crate::error::WorkspaceError;
 
-const MAGIC: &str = "LMDOC1";
+const MAGIC: &str = "LMDOC2";
+const MAGIC_V1: &str = "LMDOC1";
 const EXT: &str = "doc";
 const VERSION_FILE: &str = "chunker.version";
 /// 題名の最大文字数。
 pub const MAX_TITLE_CHARS: usize = 200;
-/// ヘッダー（形式・題名）に見込む最大バイト数。本文と合わせた読み込みの上限に使う。
-const MAX_HEADER_BYTES: usize = 4 * MAX_TITLE_CHARS + 64;
+/// グループ名の最大文字数。
+pub const MAX_GROUP_CHARS: usize = 40;
+/// ヘッダー（形式・題名・グループ）に見込む最大バイト数。本文と合わせた読み込みの上限に使う。
+const MAX_HEADER_BYTES: usize = 4 * (MAX_TITLE_CHARS + MAX_GROUP_CHARS) + 64;
 /// 古い一時ファイルとみなす最小の経過時間（書き込み中のものを消さないため、これより短くはできない）。
 pub const MIN_TMP_AGE: Duration = Duration::from_secs(60);
 /// Windows の予約デバイス名（拡張子が付いても、デバイスとして扱われる）。
@@ -33,6 +37,8 @@ pub struct StoredDoc {
     pub id: String,
     pub title: String,
     pub format: Format,
+    /// 資料のグループ名。空なら未分類。
+    pub group: String,
     pub text: String,
 }
 
@@ -61,7 +67,7 @@ fn is_reserved(id: &str) -> bool {
 }
 
 /// 画面の見かけを偽装できる文字（双方向制御・ゼロ幅・行区切りなど）か。
-fn is_invisible_format(c: char) -> bool {
+pub(crate) fn is_invisible_format(c: char) -> bool {
     matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
 }
 
@@ -81,6 +87,23 @@ pub fn check_title(title: &str) -> Result<(), WorkspaceError> {
         ));
     }
     Ok(())
+}
+
+/// グループ名を整える（前後の空白を除く）。空は「未分類」。長すぎる・改行や見えない文字を含むものは断る。
+pub fn check_group(group: &str) -> Result<String, WorkspaceError> {
+    let group = group.trim();
+    if group.chars().count() > MAX_GROUP_CHARS {
+        return Err(WorkspaceError::InvalidTitle("グループ名が長すぎます"));
+    }
+    if group
+        .chars()
+        .any(|c| c.is_control() || is_invisible_format(c))
+    {
+        return Err(WorkspaceError::InvalidTitle(
+            "グループ名に改行・制御文字・見えない文字は使えません",
+        ));
+    }
+    Ok(group.to_string())
 }
 
 /// 入出力のエラーを、パスを含まない短い文言にする（原因の種類だけ残す）。
@@ -111,6 +134,7 @@ impl DocStore {
     pub fn save(&self, doc: &StoredDoc) -> Result<(), WorkspaceError> {
         check_id(&doc.id)?;
         check_title(&doc.title)?;
+        let group = check_group(&doc.group)?; // 整えた（前後の空白を除いた）名前を書く
         if doc.text.len() > MAX_DOC_BYTES {
             return Err(WorkspaceError::TooLarge {
                 size: doc.text.len(),
@@ -123,8 +147,8 @@ impl DocStore {
             Format::Markdown => "markdown",
         };
         let body = format!(
-            "{MAGIC}\nformat={format}\ntitle={}\n\n{}",
-            doc.title, doc.text
+            "{MAGIC}\nformat={format}\ntitle={}\ngroup={}\n\n{}",
+            doc.title, group, doc.text
         );
         let tmp = self.dir.join(format!(
             "{}.{}-{}.tmp",
@@ -294,15 +318,15 @@ fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 fn parse(id: &str, raw: &str) -> Result<StoredDoc, WorkspaceError> {
-    let mut parts = raw.splitn(5, '\n');
-    let (magic, format, title, blank, text) = (
-        parts.next(),
-        parts.next(),
-        parts.next(),
-        parts.next(),
-        parts.next().unwrap_or(""),
-    );
-    if magic != Some(MAGIC) || blank != Some("") {
+    let v1 = raw.starts_with(&format!("{MAGIC_V1}\n"));
+    let mut parts = raw.splitn(if v1 { 5 } else { 6 }, '\n');
+    let magic = parts.next();
+    let format = parts.next();
+    let title = parts.next();
+    let group = if v1 { Some("group=") } else { parts.next() };
+    let blank = parts.next();
+    let text = parts.next().unwrap_or("");
+    if magic != Some(if v1 { MAGIC_V1 } else { MAGIC }) || blank != Some("") {
         return Err(WorkspaceError::Corrupt);
     }
     let format = match format.and_then(|f| f.strip_prefix("format=")) {
@@ -314,10 +338,15 @@ fn parse(id: &str, raw: &str) -> Result<StoredDoc, WorkspaceError> {
         .and_then(|t| t.strip_prefix("title="))
         .ok_or(WorkspaceError::Corrupt)?;
     check_title(title).map_err(|_| WorkspaceError::Corrupt)?;
+    let group = group
+        .and_then(|g| g.strip_prefix("group="))
+        .ok_or(WorkspaceError::Corrupt)?;
+    let group = check_group(group).map_err(|_| WorkspaceError::Corrupt)?;
     Ok(StoredDoc {
         id: id.to_string(),
         title: title.to_string(),
         format,
+        group,
         text: text.to_string(),
     })
 }

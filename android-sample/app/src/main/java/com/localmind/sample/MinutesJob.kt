@@ -36,10 +36,16 @@ object MinutesJob {
      * 保存した議事録は、`RecordingStore.exportMinutes` で書き出せる。
      */
     fun run(context: Context, id: String, segments: List<SpokenSegment>): MinutesReport? {
-        val model = checkNotNull(activeModel(context)) { "議事録のモデルがありません。先にダウンロードしてください" }
         if (!running.compareAndSet(false, true)) return null
+        if (!ModelGate.tryEnter(ModelGate.MINUTES)) {
+            running.set(false)
+            error("質問に回答中です。終わってからお試しください")
+        }
         cancelRequested = false
         try {
+            // 使うモデルは、ゲートに入ってから決める（切り替え・削除と食い違わないように）
+            val model = checkNotNull(activeModel(context)) { "議事録のモデルがありません。先にダウンロードしてください" }
+            AskJob.release() // 質問画面で開いたままのモデルは閉じる（モデルを同時に 2 つ開かない）
             val opened = MinutesEngine.open(
                 model.file.absolutePath, model.sha256,
                 Runtime.getRuntime().availableProcessors().coerceIn(1, 4).toUInt(),
@@ -61,6 +67,7 @@ object MinutesJob {
             }
         } finally {
             running.set(false)
+            ModelGate.leave(ModelGate.MINUTES)
         }
     }
 

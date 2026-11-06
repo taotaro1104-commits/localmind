@@ -6,6 +6,7 @@
 pub mod chunker;
 pub mod docstore;
 pub mod error;
+pub mod html;
 pub mod workspace;
 
 pub use chunker::{split, Chunk, Format, CHUNKER_VERSION};

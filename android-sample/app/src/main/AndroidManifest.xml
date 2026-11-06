@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 録音の保存期間を過ぎたものを消す定期ジョブを、再起動後も続ける -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- 議事録のモデルを、利用者が同意したときに 1 度だけ取得する（ここ以外ではネットワークを使わない） -->
+    <!-- モデルの取得（利用者が同意したとき）と、質問応答で利用者が選んだときの Wikipedia 検索だけに使う -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
@@ -41,6 +41,11 @@
                 <data android:mimeType="text/markdown" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".AskActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false" />
         <activity
             android:name=".RecordActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"

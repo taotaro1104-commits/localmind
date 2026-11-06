@@ -164,10 +164,16 @@ fun runSelfTest(dir: File): List<Check> {
         if (ModelStore.active(d)?.sha256 != shaA) errors += "記録を読み戻せない"
         ModelStore.activate(d, b, shaB)
         if (ModelStore.active(d)?.file?.name != "b.gguf" || !a.exists()) errors += "切り替えで、前のモデルが先に消えた"
+        if (ModelStore.installed(d).map { it.file.name } != listOf("a.gguf", "b.gguf")) errors += "取得済みの一覧が違う"
         ModelStore.prune(d, alsoParts = false)
-        if (a.exists() || !part.exists()) errors += "掃除（取りかけを残す）が違う"
+        if (!a.exists() || !part.exists()) errors += "掃除（取りかけを残す・取得済みを消さない）が違う"
         ModelStore.prune(d, alsoParts = true)
-        if (part.exists() || !b.exists()) errors += "掃除（取りかけも消す）が違う"
+        if (part.exists() || !a.exists() || !b.exists()) errors += "掃除（取りかけも消す）が違う"
+        ModelStore.switchTo(d, "a.gguf")
+        if (ModelStore.active(d)?.sha256 != shaA) errors += "切り替えられない"
+        try { ModelStore.remove(d, "a.gguf"); errors += "使っているモデルを消せた" } catch (_: IllegalStateException) {}
+        ModelStore.remove(d, "b.gguf")
+        if (b.exists() || ModelStore.installed(d).size != 1) errors += "削除が働かない"
         d.deleteRecursively()
         if (errors.isEmpty()) null else errors.joinToString("、")
     }

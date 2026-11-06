@@ -40,6 +40,7 @@ impl From<GenerateError> for IngestError {
 /// 文法で形を縛って文章を生成するエンジン。
 pub trait Generator: Send + Sync {
     /// `prompt` に続けて、`grammar`（GBNF）に合う文字列を最大 `max_new_tokens` トークンまで生成する。
+    /// `grammar` が空なら、形を縛らない自由な文章を生成する。
     fn generate(
         &self,
         prompt: &str,
@@ -48,6 +49,8 @@ pub trait Generator: Send + Sync {
     ) -> Result<String, GenerateError>;
     /// 中止を求める（実行中の生成も止める）。
     fn cancel(&self);
+    /// 求めた中止を取り消す（生成が走っていないときに届いた中止が、次の生成を止めないように）。
+    fn reset_cancel(&self) {}
     fn id(&self) -> String;
 }
 
@@ -64,6 +67,16 @@ impl LlmMinutesExtractor {
     /// 実行中の抽出を止める。
     pub fn cancel(&self) {
         self.generator.cancel();
+    }
+
+    /// 残っている中止の要求を取り消す。
+    pub fn reset_cancel(&self) {
+        self.generator.reset_cancel();
+    }
+
+    /// 同じモデルで、ほかの生成（質問応答）にも使う。
+    pub fn generator(&self) -> &dyn Generator {
+        self.generator.as_ref()
     }
 }
 

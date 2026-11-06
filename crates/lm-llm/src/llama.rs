@@ -172,6 +172,10 @@ impl Generator for LlamaGenerator {
         self.cancel.store(true, Ordering::Relaxed);
     }
 
+    fn reset_cancel(&self) {
+        self.cancel.store(false, Ordering::Relaxed);
+    }
+
     fn id(&self) -> String {
         self.id.clone()
     }
@@ -200,11 +204,19 @@ impl LlamaGenerator {
             .model
             .new_context(backend, params)
             .map_err(|_| failed("推論の準備に失敗しました（メモリが足りません）"))?;
-        let mut sampler = LlamaSampler::chain_simple([
-            LlamaSampler::grammar(&self.model, grammar, "root")
-                .map_err(|_| failed("出力の形の指定が不正です"))?,
-            LlamaSampler::greedy(),
-        ]);
+        let mut sampler = if grammar.is_empty() {
+            // 自由な文章。同じ語句の繰り返しだけ抑える。
+            LlamaSampler::chain_simple([
+                LlamaSampler::penalties(self.model.n_vocab(), 64, 1.1, 0.0, 0.0),
+                LlamaSampler::greedy(),
+            ])
+        } else {
+            LlamaSampler::chain_simple([
+                LlamaSampler::grammar(&self.model, grammar, "root")
+                    .map_err(|_| failed("出力の形の指定が不正です"))?,
+                LlamaSampler::greedy(),
+            ])
+        };
 
         // プロンプトを読み込む（最後のトークンだけ、次のトークンの確率を求める）。
         let mut batch = LlamaBatch::new(N_BATCH, 1);

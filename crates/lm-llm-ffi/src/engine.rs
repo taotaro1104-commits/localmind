@@ -127,6 +127,14 @@ pub struct MinutesEngine {
 }
 
 impl MinutesEngine {
+    pub(crate) fn extractor(&self) -> &LlmMinutesExtractor {
+        &self.extractor
+    }
+
+    pub(crate) fn model_id(&self) -> String {
+        self.extractor_id()
+    }
+
     pub(crate) fn from_extractor(extractor: LlmMinutesExtractor) -> Self {
         Self { extractor }
     }
@@ -192,6 +200,11 @@ impl MinutesEngine {
     /// 実行中の抽出を止める（別のスレッドから呼べる）。止めた抽出は `Cancelled` を返す。
     pub fn cancel(&self) {
         self.extractor.cancel();
+    }
+
+    /// 残っている中止の要求を取り消す。生成が走っていないときに `cancel` した場合に、次の質問の前に呼ぶ。
+    pub fn reset_cancel(&self) {
+        self.extractor.reset_cancel();
     }
 
     /// 渡せる文字起こしの最大文字数の目安（時刻の印を含めた、LLM への入力の文字数）。

@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
@@ -62,9 +63,70 @@ class ModelStoreTest {
         assertFalse("一時ファイルを残さない", File(dir, "active.txt.tmp").exists())
 
         ModelStore.prune(dir, alsoParts = false) // ダウンロード中は、取りかけを残す
-        assertFalse(a.exists()); assertTrue(part.exists())
+        assertTrue("取得済みのモデルは消さない", a.exists()); assertTrue(part.exists())
         ModelStore.prune(dir, alsoParts = true)
-        assertFalse(part.exists()); assertTrue(b.exists())
+        assertFalse(part.exists()); assertTrue(a.exists()); assertTrue(b.exists())
+    }
+
+    @Test
+    fun installedModelsAreListedAndCanBeSwitchedTo() {
+        val a = model("a.gguf"); val b = model("b.gguf")
+        assertEquals(emptyList<String>(), ModelStore.installed(dir).map { it.file.name })
+        ModelStore.activate(dir, a, shaA)
+        ModelStore.activate(dir, b, shaB)
+        assertEquals(listOf("a.gguf", "b.gguf"), ModelStore.installed(dir).map { it.file.name })
+        ModelStore.switchTo(dir, "a.gguf")
+        assertEquals("a.gguf", ModelStore.active(dir)?.file?.name)
+        assertEquals(shaA, ModelStore.active(dir)?.sha256)
+        // 記録の無い名前・不正な名前には切り替えない
+        for (bad in listOf("zzz.gguf", "../a.gguf", "")) {
+            try { ModelStore.switchTo(dir, bad); fail(bad) } catch (_: IllegalStateException) {}
+        }
+        assertEquals("a.gguf", ModelStore.active(dir)?.file?.name)
+    }
+
+    @Test
+    fun switchingAwayFromAnUnregisteredActiveModelKeepsItInTheList() {
+        val legacy = model(MODEL_CATALOG[0].fileName)
+        val b = model("b.gguf")
+        ModelStore.activate(dir, b, shaB) // 登録簿が無かった状態で、別のモデルを使い始める
+        assertEquals(listOf("b.gguf", legacy.name).sorted(), ModelStore.installed(dir).map { it.file.name }.sorted())
+        ModelStore.switchTo(dir, legacy.name)
+        assertEquals(MODEL_CATALOG[0].sha256, ModelStore.active(dir)?.sha256)
+    }
+
+    @Test
+    fun theActiveModelCannotBeRemovedButOthersCanAndTheListFollows() {
+        val a = model("a.gguf"); val b = model("b.gguf")
+        ModelStore.activate(dir, a, shaA)
+        ModelStore.activate(dir, b, shaB)
+        try { ModelStore.remove(dir, "b.gguf"); fail("使っているモデルは消せない") } catch (_: IllegalStateException) {}
+        assertTrue(b.exists())
+        ModelStore.remove(dir, "a.gguf")
+        assertFalse(a.exists())
+        assertEquals(listOf("b.gguf"), ModelStore.installed(dir).map { it.file.name })
+        // 一覧の記録からも消えている（ファイルを置き直しても、勝手には戻らない）
+        model("a.gguf")
+        assertEquals(listOf("b.gguf"), ModelStore.installed(dir).map { it.file.name })
+    }
+
+    @Test
+    fun aModelRecordedBeforeTheListExistedStillShowsUpAndPruneNeverDeletesModels() {
+        val legacy = model(MODEL_CATALOG[0].fileName)
+        val orphan = model("orphan.gguf")
+        assertEquals(listOf(legacy.name), ModelStore.installed(dir).map { it.file.name })
+        assertEquals(MODEL_CATALOG[0].label, ModelStore.installed(dir)[0].label)
+        ModelStore.prune(dir, alsoParts = true)
+        assertTrue(legacy.exists()); assertTrue("記録に無い .gguf も、勝手には消さない", orphan.exists())
+    }
+
+    @Test
+    fun aDamagedListIsIgnoredAndNeverMakesPruneDeleteEverything() {
+        val a = model("a.gguf")
+        File(dir, "installed.txt").writeText("../x.gguf|$shaA\nnonsense\na.gguf|zz")
+        assertEquals(emptyList<String>(), ModelStore.installed(dir).map { it.file.name })
+        ModelStore.prune(dir, alsoParts = true)
+        assertTrue("記録が読めないときも、モデルは消さない", a.exists())
     }
 
     @Test(expected = IllegalArgumentException::class)

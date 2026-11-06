@@ -62,6 +62,7 @@ class MainActivity : Activity() {
                 dashboard.done(
                     onOpenSearch = { startActivity(Intent(this, SearchActivity::class.java)) },
                     onOpenRecord = { startActivity(Intent(this, RecordActivity::class.java)) },
+                    onOpenAsk = { startActivity(Intent(this, AskActivity::class.java)) },
                 )
             }
         }

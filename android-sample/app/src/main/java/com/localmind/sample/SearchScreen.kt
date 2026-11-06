@@ -25,6 +25,9 @@ class SearchScreen(
     onAdd: (title: String, text: String) -> Unit,
     onRemove: (id: String, title: String) -> Unit,
     onPickFile: () -> Unit,
+    onAddUrl: (url: String) -> Unit,
+    onSetGroup: (id: String, group: String) -> Unit,
+    onRemoveGroup: (group: String, docs: List<DocumentInfo>) -> Unit,
 ) {
     private val dp = context.resources.displayMetrics.density
     private fun px(v: Int) = (v * dp).toInt()
@@ -63,7 +66,7 @@ class SearchScreen(
     }
     private val examples = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val results = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private val docs = DocsPanel(context, onAdd, onRemove, onPickFile)
+    private val docs = DocsPanel(context, onAdd, onRemove, onPickFile, onAddUrl, onSetGroup, onRemoveGroup)
     private val body = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(
@@ -121,6 +124,12 @@ class SearchScreen(
     /** 資料の追加・削除などの状況（入力中の欄は触らない）。 */
     fun note(message: String, ok: Boolean) = docs.report(message, ok)
 
+    /** 検索の範囲（切り替えているグループ。null ならすべて、空文字なら未分類）。 */
+    fun scope(): String? = docs.scope()
+
+    /** 追加先のグループ（空なら未分類）。 */
+    fun group(): String = docs.group()
+
     /** 追加に成功したので、入力欄を空にする。 */
     fun clearForm() = docs.clearForm()
 
@@ -143,9 +152,13 @@ class SearchScreen(
         results.addView(text(15f, Palette.running).apply { text = "探しています…" }, margins(top = 16))
     }
 
-    fun show(query: String, r: WorkspaceReport) {
+    fun show(query: String, r: WorkspaceReport, scope: String? = null) {
         enable(true)
         results.removeAllViews()
+        if (scope != null) {
+            val label = if (scope.isEmpty()) UNGROUPED_LABEL else scope
+            results.addView(text(13f, Palette.muted).apply { text = "検索の範囲: グループ「$label」" }, margins(top = 12))
+        }
         if (!r.found || r.citations.isEmpty()) {
             results.addView(notFound(query), margins(top = 16))
             return

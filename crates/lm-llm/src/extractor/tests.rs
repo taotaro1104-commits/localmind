@@ -31,6 +31,9 @@ impl Generator for &'static Canned {
     fn cancel(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
     }
+    fn reset_cancel(&self) {
+        self.cancelled.store(false, Ordering::Relaxed);
+    }
     fn id(&self) -> String {
         "canned".into()
     }
@@ -119,4 +122,13 @@ fn cancel_reaches_the_generator() {
     let c = leak(Canned::new(Ok(REPLY.into())));
     LlmMinutesExtractor::new(Box::new(c)).cancel();
     assert!(c.cancelled.load(Ordering::Relaxed));
+}
+
+#[test]
+fn reset_cancel_clears_a_pending_cancel() {
+    let c = leak(Canned::new(Ok(REPLY.into())));
+    let ex = LlmMinutesExtractor::new(Box::new(c));
+    ex.cancel();
+    ex.reset_cancel();
+    assert!(!c.cancelled.load(Ordering::Relaxed));
 }

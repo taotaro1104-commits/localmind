@@ -33,13 +33,23 @@ internal val MODEL_CATALOG = listOf(
 /** 使うと決めたモデル。 */
 data class ActiveModel(val file: File, val sha256: String)
 
+/** 取得済みのモデル（切り替えの候補）。 */
+data class InstalledModel(val file: File, val sha256: String) {
+    /** 画面に出す名前。候補のモデルは候補の名前、取り込んだモデルはファイル名。 */
+    val label: String get() = MODEL_CATALOG.firstOrNull { it.sha256 == sha256 }?.label ?: "取り込んだモデル（${file.name}）"
+    val megabytes: Long get() = file.length() / (1024 * 1024)
+}
+
 /**
  * 取得したモデルの置き場所（`files/llm/`）と、今どれを使うかの記録（`active.txt` に `ファイル名|SHA-256`）。
+ * 取得したモデルの一覧（`installed.txt` に、1 行ずつ `ファイル名|SHA-256`）も持ち、切り替えと削除に使う。
  * 記録の中身は信用せず、読むたびに名前と形を確かめる。
  */
 object ModelStore {
     private const val DIR = "llm"
     private const val ACTIVE = "active.txt"
+    private const val INSTALLED = "installed.txt"
+    private const val MAX_RECORD_BYTES = 16 * 1024
     private val NAME = Regex("^[A-Za-z0-9._-]{1,100}\\.gguf$")
     private val HEX64 = Regex("^[0-9a-f]{64}$")
 
@@ -49,6 +59,9 @@ object ModelStore {
     internal fun isValidSha(sha: String) = HEX64.matches(sha)
 
     fun active(context: Context): ActiveModel? = active(dir(context))
+
+    /** 使っているモデルの名前（画面に出す）。無ければ null。 */
+    fun activeLabel(context: Context): String? = active(context)?.let { InstalledModel(it.file, it.sha256).label }
 
     /** 使うモデル。無ければ null。記録が無くても、以前の標準のファイルがあればそれを使う。 */
     internal fun active(d: File): ActiveModel? {
@@ -62,18 +75,27 @@ object ModelStore {
         return if (legacy.isFile) ActiveModel(legacy, MODEL_CATALOG[0].sha256) else null
     }
 
-    /** `file` を使うモデルにする。ほかのモデルは、新しいモデルで議事録を作れたあとに [prune] で消す。 */
+    /** `file` を使うモデルにして、取得済みの一覧にも入れる。ほかのモデルは消さない（切り替えで選び直せる）。 */
     fun activate(context: Context, file: File, sha256: String) = activate(dir(context), file, sha256)
 
+    @Synchronized
     internal fun activate(d: File, file: File, sha256: String) {
         require(isValidName(file.name) && isValidSha(sha256)) { "モデルの記録が不正です" }
-        val tmp = File(d, "$ACTIVE.tmp")
+        // 一覧を先に更新する（途中で失敗しても、使っているモデルは一覧にある状態を保つ）
+        // 登録簿に無かった使用中のモデル（以前の標準のファイルなど）も、一覧から落とさずに引き継ぐ
+        val others = installed(d).map { it.file.name to it.sha256 }.filter { it.first != file.name }
+        writeAtomic(d, INSTALLED, (others + (file.name to sha256)).joinToString("\n") { "${it.first}|${it.second}" })
+        writeAtomic(d, ACTIVE, "${file.name}|$sha256")
+    }
+
+    /** 記録を、一時ファイル経由で置き換える（rename は、OS によっては既存のファイルがあると失敗する）。 */
+    private fun writeAtomic(d: File, name: String, content: String) {
+        val tmp = File(d, "$name.tmp")
         try {
-            tmp.writeText("${file.name}|$sha256")
+            tmp.writeText(content)
             try {
-                // 既にある記録を置き換える（rename は、OS によっては既存のファイルがあると失敗する）
                 java.nio.file.Files.move(
-                    tmp.toPath(), File(d, ACTIVE).toPath(),
+                    tmp.toPath(), File(d, name).toPath(),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
                 )
             } catch (_: java.io.IOException) {
@@ -84,19 +106,65 @@ object ModelStore {
         }
     }
 
+    /** 一覧の記録（形の正しい行だけ）。 */
+    private fun readInstalled(d: File): List<Pair<String, String>> =
+        File(d, INSTALLED).takeIf { it.isFile && it.length() < MAX_RECORD_BYTES }?.readLines().orEmpty().mapNotNull { line ->
+            val (name, sha) = line.trim().split('|', limit = 2).let { it.getOrNull(0).orEmpty() to it.getOrNull(1).orEmpty() }
+            (name to sha).takeIf { isValidName(name) && isValidSha(sha) }
+        }
+
+    fun installed(context: Context): List<InstalledModel> = installed(dir(context))
+
+    /**
+     * 取得済みのモデル（ファイルがあるものだけ。名前順）。一覧の記録のほか、使っているモデルと、以前の標準のファイルも含める
+     * （一覧ができる前に取得したものを、切り替えの候補から落とさない）。
+     */
+    internal fun installed(d: File): List<InstalledModel> {
+        val known = linkedMapOf<String, String>()
+        readInstalled(d).forEach { (name, sha) -> known[name] = sha }
+        active(d)?.let { known[it.file.name] = it.sha256 }
+        return known.entries
+            .map { InstalledModel(File(d, it.key), it.value) }
+            .filter { it.file.isFile }
+            .sortedBy { it.file.name }
+    }
+
+    /** 取得済みのモデルの 1 つを、使うモデルにする。無ければ例外。 */
+    fun switchTo(context: Context, name: String) = switchTo(dir(context), name)
+
+    @Synchronized
+    internal fun switchTo(d: File, name: String) {
+        check(!ModelGate.isBusy() && !ModelDownloader.isRunning) { "モデルを使う処理の最中は、切り替えられません" }
+        val m = installed(d).firstOrNull { it.file.name == name } ?: throw IllegalStateException("そのモデルは見つかりません")
+        activate(d, m.file, m.sha256)
+    }
+
+    /** 取得済みのモデルを消す。使っているモデルは消せない（使うモデルを先に切り替える）。 */
+    fun remove(context: Context, name: String) = remove(dir(context), name)
+
+    @Synchronized
+    internal fun remove(d: File, name: String) {
+        check(!ModelGate.isBusy() && !ModelDownloader.isRunning) { "モデルを使う処理の最中は、削除できません" }
+        val m = installed(d).firstOrNull { it.file.name == name } ?: throw IllegalStateException("そのモデルは見つかりません")
+        check(active(d)?.file?.name != name) { "使っているモデルは削除できません。先に別のモデルへ切り替えてください" }
+        check(m.file.delete() || !m.file.exists()) { "モデルを削除できませんでした" }
+        writeAtomic(d, INSTALLED, readInstalled(d).filter { it.first != name }.joinToString("\n") { "${it.first}|${it.second}" })
+    }
+
     /** 記録を外す（読み込めないモデルを使い続けない）。ファイルは消さない。 */
     fun forget(context: Context) {
         File(dir(context), ACTIVE).delete()
     }
 
-    /** 使っているモデル以外の `.gguf` と、取りかけを消す（容量のため）。 */
+    /**
+     * 取りかけ（`.part`）だけを消す。`.gguf` は、記録が壊れていても・取得の途中でも、決して消さない
+     * （モデルを消すのは、利用者が [remove] で選んだときだけ）。
+     */
     fun prune(context: Context) = prune(dir(context), alsoParts = !ModelDownloader.isRunning)
 
     /** `alsoParts` が false のときは、取りかけ（実行中のダウンロード）は消さない。 */
     internal fun prune(d: File, alsoParts: Boolean) {
-        val keep = active(d)?.file?.name ?: return
-        d.listFiles()
-            ?.filter { it.isFile && it.name != keep && (it.name.endsWith(".gguf") || (alsoParts && it.name.endsWith(".part"))) }
-            ?.forEach { it.delete() }
+        if (!alsoParts) return
+        d.listFiles()?.filter { it.isFile && it.name.endsWith(".part") }?.forEach { it.delete() }
     }
 }
