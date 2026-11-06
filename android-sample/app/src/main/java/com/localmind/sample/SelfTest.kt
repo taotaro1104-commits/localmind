@@ -112,5 +112,15 @@ fun runSelfTest(dir: File): List<Check> {
             null
         }
     }
+    results += check("モデル取得: 接続先は https の許可したホストだけ") {
+        val ok = listOf("https://huggingface.co/a", "https://us.aws.cdn.hf.co/x?y=1")
+        val bad = listOf(
+            "http://hf.co/x", "https://hf.co/x", "https://evilhf.co/x", "https://hf.co.evil.com/x",
+            "https://user:pw@hf.co/x", "https://hf.co@evil.com/x", "https://evil.com/hf.co",
+        )
+        val wrong = ok.filterNot { ModelDownloader.isSafeRedirect(java.net.URL(it)) } +
+            bad.filter { ModelDownloader.isSafeRedirect(java.net.URL(it)) }
+        if (wrong.isEmpty()) null else "判定が違う: ${wrong.size} 件"
+    }
     return results
 }

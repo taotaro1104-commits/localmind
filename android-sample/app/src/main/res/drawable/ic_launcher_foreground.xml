@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 声の波形（録音と文字起こし）を 3 本の棒で。中央だけ緑で、端末の中で完結することを示す小さな点を下に置く。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M34,44h8v20h-8z" />
+    <path android:fillColor="#3DD6A8" android:pathData="M50,34h8v40h-8z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M66,41h8v26h-8z" />
+    <path android:fillColor="#3DD6A8" android:pathData="M50,80h8v6h-8z" />
+</vector>

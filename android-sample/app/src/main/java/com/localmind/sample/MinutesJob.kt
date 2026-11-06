@@ -17,8 +17,8 @@ import uniffi.lm_llm_ffi.SpokenLine
  * ファイルの SHA-256 は、取得元（Hugging Face）が公開している値。
  */
 private const val LLM_DIR = "llm"
-private const val LLM_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-private const val LLM_SHA256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
+internal const val LLM_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+internal const val LLM_SHA256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
 
 /** 文字起こしから議事録を作る。重いので、別スレッドから呼ぶこと。実行中かどうかと中止は、プロセス全体で持つ。 */
 object MinutesJob {

@@ -54,7 +54,7 @@ class RecordActivity : Activity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing) { SpeechJob.cancel(); MinutesJob.cancel() } // 画面を閉じたら、重い処理も止める（回転などの作り直しでは止めない）
+        if (isFinishing) { SpeechJob.cancel(); MinutesJob.cancel(); ModelDownloader.cancel() } // 画面を閉じたら、重い処理も止める（回転などの作り直しでは止めない）
         super.onDestroy()
     }
 
@@ -227,6 +227,10 @@ class RecordActivity : Activity() {
             screen.note("文字起こしや録音が終わってからお試しください", ok = false)
             return
         }
+        if (!MinutesJob.modelFile(applicationContext).isFile) {
+            offerModelDownload(this) { makeMinutes(recordingId, segments) }
+            return
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         screen.note("議事録を作っています…（数分かかります）", ok = true)
         thread(name = "lm-minutes") {
@@ -289,4 +293,4 @@ class RecordActivity : Activity() {
 }
 
 /** 段落の区切り（空行）。 */
-private val NL2 = "\n" + "\n"
+internal val NL2 = "\n" + "\n"

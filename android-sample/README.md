@@ -1,6 +1,6 @@
 # LocalMind Android サンプル
 
-`liblm_ffi.so`（Rust コア）を Kotlin から呼ぶ最小のアプリ。起動すると自己テストを 2 段階で実行し（基本 9 項目 + 同梱の実モデル e5 の 7 項目）、
+`liblm_ffi.so`（Rust コア）を Kotlin から呼ぶ最小のアプリ。起動すると自己テストを 2 段階で実行し（基本 10 項目 + 同梱の実モデル e5 の 7 項目）、
 結果を画面と logcat（タグ `LMSample`）に出す。UI は標準 View のみ（Compose なし）。
 
 - Rust 成果物は `../dist/android/{jniLibs,kotlin}` を直接参照する（コピーしない）。先にそちらを作ること
@@ -24,7 +24,7 @@ set JAVA_HOME=...jdk-17以上   set ANDROID_HOME=...\Android\Sdk
 gradlew.bat assembleDebug
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 adb shell am start -n com.localmind.sample/.MainActivity
-adb logcat -d -s LMSample:I          # "基本: ALL PASS (9)" と "実モデル(e5): ALL PASS (7)" が出れば成功（デバッグビルドのみ出力）
+adb logcat -d -s LMSample:I          # "基本: ALL PASS (10)" と "実モデル(e5): ALL PASS (7)" が出れば成功（デバッグビルドのみ出力）
 ```
 
 ## 確認する内容
@@ -54,6 +54,16 @@ Kotlin 実装の `ForeignEmbedder` の注入、`dim()` の例外がクラッシ�
 ## 議事録（LLM）
 
 文字起こしの結果の「議事録を作る」は、`liblm_llm_ffi.so`（llama.cpp）で議事録を抽出する。モデル（約 1.1GB）は APK に
-同梱しない。`files/llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` に置くこと（`MinutesJob.kt` の SHA-256 と一致しないと読み込まない）。
+同梱しない。無いときは、アプリが案内を出し、利用者が同意すると Hugging Face から取得する（`ModelDownloader.kt`）。
+接続先は https の `huggingface.co` と配信先の `*.cdn.hf.co`・`*.xethub.hf.co` だけで、SHA-256（`MinutesJob.kt`）が一致したときだけ
+`files/llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` に置く。途中で止まっても、続きから再開できる。
+このアプリがネットワークを使うのは、ここだけ（`INTERNET` 権限はこのため）。オフラインで使うなら、`adb push` のあと
+`adb shell run-as com.localmind.sample cp /data/local/tmp/<ファイル> files/llm/` で置いてもよい。
 `scripts/build-android.sh` は `liblm_ffi.so` と `liblm_llm_ffi.so` の両方を作る。Kotlin のバインディングは両方とも
-同じビルドから生成し直すこと。
+同じビルド（`lm-ffi` は `--features "onnx whisper"`）から生成し直すこと。
+
+## 配布用の APK
+
+署名つきの release は、環境変数 `LM_KEYSTORE` / `LM_KEYSTORE_PASSWORD` / `LM_KEY_ALIAS` / `LM_KEY_PASSWORD` を
+設定して `./gradlew :app:assembleRelease`。鍵はリポジトリに入れない（失うと、同じアプリとして更新を配れなくなる）。
+埋め込みモデル（e5）を含むので約 700MB になる（Google Play の上限は超える。直接配布向け）。
