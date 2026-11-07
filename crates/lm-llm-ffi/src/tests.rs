@@ -275,3 +275,19 @@ fn a_real_failure_is_not_reported_as_a_cancel_even_if_cancel_was_requested() {
     e.cancel();
     assert!(matches!(e.extract(lines()), Err(LlmError::Engine { .. })));
 }
+
+#[test]
+fn the_minutes_language_is_chosen_with_a_code_and_bad_codes_are_refused() {
+    let (e, _) = engine(Ok(REPLY.into()));
+    assert!(e.set_language("en".into()).is_ok());
+    assert!(e.set_language("ja".into()).is_ok());
+    for bad in ["", "EN", "fr", "english"] {
+        assert!(
+            matches!(
+                e.set_language(bad.into()),
+                Err(LlmError::InvalidInput { .. })
+            ),
+            "{bad}"
+        );
+    }
+}

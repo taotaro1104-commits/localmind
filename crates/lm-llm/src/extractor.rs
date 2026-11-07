@@ -4,7 +4,9 @@
 use lm_ingest::{IngestError, MinutesExtractor, RawMinutes};
 
 use crate::parse::parse_minutes;
-use crate::prompt::{build_prompt, MINUTES_GRAMMAR};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::prompt::{build_prompt_in, Language, MINUTES_GRAMMAR};
 
 /// 1 回の抽出で生成する最大トークン数。
 pub const MAX_NEW_TOKENS: usize = 1500;
@@ -57,11 +59,30 @@ pub trait Generator: Send + Sync {
 /// 議事録を LLM で抽出する。
 pub struct LlmMinutesExtractor {
     generator: Box<dyn Generator>,
+    /// 議事録を書く言語（`true` なら英語）。既定は日本語。
+    english: AtomicBool,
 }
 
 impl LlmMinutesExtractor {
     pub fn new(generator: Box<dyn Generator>) -> Self {
-        Self { generator }
+        Self {
+            generator,
+            english: AtomicBool::new(false),
+        }
+    }
+
+    /// 議事録を書く言語を決める（次の抽出から効く。抽出は 1 つずつ行うこと）。
+    pub fn set_language(&self, language: Language) {
+        self.english
+            .store(language == Language::En, Ordering::Relaxed);
+    }
+
+    pub fn language(&self) -> Language {
+        if self.english.load(Ordering::Relaxed) {
+            Language::En
+        } else {
+            Language::Ja
+        }
     }
 
     /// 実行中の抽出を止める。
@@ -82,7 +103,7 @@ impl LlmMinutesExtractor {
 
 impl MinutesExtractor for LlmMinutesExtractor {
     fn extract(&self, transcript: &str) -> Result<RawMinutes, IngestError> {
-        let prompt = build_prompt(transcript);
+        let prompt = build_prompt_in(self.language(), transcript);
         let output = self
             .generator
             .generate(&prompt, MINUTES_GRAMMAR, MAX_NEW_TOKENS)?;

@@ -132,3 +132,17 @@ fn reset_cancel_clears_a_pending_cancel() {
     ex.reset_cancel();
     assert!(!c.cancelled.load(Ordering::Relaxed));
 }
+
+#[test]
+fn the_extractor_writes_in_the_chosen_language() {
+    let c = leak(Canned::new(Ok(REPLY.into())));
+    let ex = LlmMinutesExtractor::new(Box::new(c));
+    assert_eq!(ex.language(), crate::Language::Ja);
+    ex.extract("[0] こんにちは\n").unwrap();
+    ex.set_language(crate::Language::En);
+    ex.extract("[0] Hello\n").unwrap();
+    let seen = c.seen.lock().unwrap();
+    assert!(seen[0].0.contains("議事録を JSON"), "既定は日本語");
+    assert!(seen[1].0.contains("Write the minutes as JSON."));
+    assert_eq!(seen[0].1, seen[1].1, "出力の形（文法）は言語によらない");
+}

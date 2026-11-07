@@ -19,6 +19,7 @@ class RecordScreen(
     private val onToggle: () -> Unit,
     private val onConsentPref: (Boolean) -> Unit,
     private val onRetention: (Int) -> Unit,
+    private val onMeetingLanguage: (String) -> Unit,
     private val onDelete: (RecordingInfo) -> Unit,
     private val onTranscribe: (RecordingInfo) -> Unit,
 ) {
@@ -50,6 +51,7 @@ class RecordScreen(
         setPadding(0, px(14), 0, px(14))
     }
     private val retention = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+    private val meetingLanguage = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
     private val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val listHeading = heading(t("保存した録音", "Saved recordings"))
     private val message = ui.text(14f, Palette.muted)
@@ -61,6 +63,14 @@ class RecordScreen(
         addView(ui.text(15f, Palette.ink, bold = true).apply { text = t("録音の保存期間", "How long to keep recordings") }, ui.lp(top = 12))
         addView(retention, ui.lp(top = 8))
         addView(ui.text(13f, Palette.muted).apply { text = t("期間を過ぎた録音は、自動で削除されます。", "Recordings older than this are deleted automatically.") }, ui.lp(top = 8))
+        addView(ui.text(15f, Palette.ink, bold = true).apply { text = t("会議の言語（文字起こしと議事録）", "Language of the meeting (transcription and minutes)") }, ui.lp(top = 16))
+        addView(meetingLanguage, ui.lp(top = 8))
+        addView(
+            ui.text(13f, Palette.muted).apply {
+                text = t("会議で話される言葉を選びます。文字起こしと、議事録を書く言語の、両方に使います。", "Choose the language spoken in the meeting. It is used for both the transcription and the language the minutes are written in.")
+            },
+            ui.lp(top = 8),
+        )
         addView(listHeading, ui.lp(top = 32))
         addView(list)
         addView(message, ui.lp(top = 12))
@@ -122,6 +132,30 @@ class RecordScreen(
                     setOnClickListener { onRetention(days) }
                 },
                 ui.lp(left = if (retention.childCount == 0) 0 else 8, wrap = true),
+            )
+        }
+    }
+
+    /** 会議の言語の選択肢（日本語・English）を出す。選んでいるものは濃く塗る。 */
+    fun setMeetingLanguage(code: String) {
+        meetingLanguage.removeAllViews()
+        listOf("ja" to "日本語", "en" to "English").forEach { (c, label) ->
+            val on = c == code
+            meetingLanguage.addView(
+                ui.text(15f, if (on) Palette.white else Palette.ink, bold = on).apply {
+                    text = label
+                    gravity = Gravity.CENTER
+                    setPadding(px(18), px(10), px(18), px(10))
+                    background = GradientDrawable().apply {
+                        setColor(if (on) Palette.ink else Palette.white)
+                        setStroke(px(1), Palette.ink)
+                    }
+                    isClickable = true
+                    isSelected = on
+                    contentDescription = t("会議の言語を${label}にする", "Set the meeting language to ${label}")
+                    setOnClickListener { onMeetingLanguage(c) }
+                },
+                ui.lp(left = if (meetingLanguage.childCount == 0) 0 else 8, wrap = true),
             )
         }
     }

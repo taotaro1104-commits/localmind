@@ -35,12 +35,13 @@ class RecordActivity : Activity() {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
         prefs = RecordPrefs(this)
-        screen = RecordScreen(this, ::toggle, ::setConfirmConsent, ::setRetention, ::confirmDelete, ::transcribe)
+        screen = RecordScreen(this, ::toggle, ::setConfirmConsent, ::setRetention, ::setMeetingLanguage, ::confirmDelete, ::transcribe)
         setContentView(screen.view)
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
         }
         screen.setSettings(prefs.confirmConsent, prefs.retentionDays)
+        screen.setMeetingLanguage(prefs.meetingLanguage)
         scheduleDailyPurge()
         thread(name = "lm-purge") {
             val failure = Purger.run(applicationContext)
@@ -136,6 +137,11 @@ class RecordActivity : Activity() {
             .show()
     }
 
+    private fun setMeetingLanguage(code: String) {
+        prefs.meetingLanguage = code
+        screen.setMeetingLanguage(code)
+    }
+
     private fun setRetention(days: Int) {
         prefs.retentionDays = days
         screen.setSettings(prefs.confirmConsent, days)
@@ -182,10 +188,11 @@ class RecordActivity : Activity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // 実行中は画面を消さない
         screen.note(t("モデルを読み込んでいます…（もう一度押すと中止）", "Loading the model… (tap again to stop)"), ok = true)
+        val language = prefs.meetingLanguage // 開始したときの言語で、最後まで行う
         thread(name = "lm-speech") {
             val result = runCatching {
                 SpeechJob.run(
-                    applicationContext, openRecordingStore(applicationContext), r.id,
+                    applicationContext, openRecordingStore(applicationContext), r.id, language,
                 ) { done, total ->
                     runOnUiThread { screen.note(t("文字起こし中… $done / $total（もう一度押すと中止）", "Transcribing… $done / $total (tap again to stop)"), ok = true) }
                 }
@@ -233,8 +240,9 @@ class RecordActivity : Activity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         screen.note(t("議事録を作っています…（数分かかります）", "Making the minutes… (this takes a few minutes)"), ok = true)
+        val language = prefs.meetingLanguage
         thread(name = "lm-minutes") {
-            val result = runCatching { MinutesJob.run(applicationContext, recordingId, segments) }
+            val result = runCatching { MinutesJob.run(applicationContext, recordingId, segments, language) }
             runOnUiThread {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 if (isDestroyed) return@runOnUiThread

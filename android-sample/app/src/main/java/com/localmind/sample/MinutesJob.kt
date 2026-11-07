@@ -35,7 +35,7 @@ object MinutesJob {
      * 録音 `id` の議事録を作って保存する。すでに実行中なら null。モデルが無ければ、置き方を伝える例外を投げる。
      * 保存した議事録は、`RecordingStore.exportMinutes` で書き出せる。
      */
-    fun run(context: Context, id: String, segments: List<SpokenSegment>): MinutesReport? {
+    fun run(context: Context, id: String, segments: List<SpokenSegment>, language: String): MinutesReport? {
         if (!running.compareAndSet(false, true)) return null
         if (!ModelGate.tryEnter(ModelGate.MINUTES)) {
             running.set(false)
@@ -50,6 +50,7 @@ object MinutesJob {
                 model.file.absolutePath, model.sha256,
                 Runtime.getRuntime().availableProcessors().coerceIn(1, 4).toUInt(),
             )
+            opened.setLanguage(language) // 議事録を書く言語
             synchronized(lock) {
                 engine = opened
                 if (cancelRequested) opened.cancel() // 読み込み中に届いた中止も有効にする

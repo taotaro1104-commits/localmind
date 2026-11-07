@@ -19,7 +19,22 @@ class RecordPrefs(context: Context) {
         get() = sp.getInt("retention_days", DEFAULT_RETENTION_DAYS).coerceIn(1, MAX_RETENTION_DAYS)
         set(v) = sp.edit().putInt("retention_days", v.coerceIn(1, MAX_RETENTION_DAYS)).apply()
 
+    /**
+     * 会議の言語（`ja` か `en`）。文字起こしの言語と、議事録を書く言語に使う。選んでいなければ、画面の言語に合わせる。
+     */
+    var meetingLanguage: String
+        get() = sp.getString("meeting_language", null)?.takeIf { it in MEETING_LANGUAGES } ?: defaultMeetingLanguage(I18n.lang)
+        set(v) {
+            require(v in MEETING_LANGUAGES) { "language must be ja or en" }
+            sp.edit().putString("meeting_language", v).apply()
+        }
+
     companion object {
+        val MEETING_LANGUAGES = listOf("ja", "en")
+
+        /** 選んでいないときの会議の言語（画面の言語に合わせる）。 */
+        fun defaultMeetingLanguage(lang: Lang): String = if (lang == Lang.JA) "ja" else "en"
+
         const val DEFAULT_RETENTION_DAYS = 30
         const val MAX_RETENTION_DAYS = 365
         val CHOICES = listOf(7, 30, 90)

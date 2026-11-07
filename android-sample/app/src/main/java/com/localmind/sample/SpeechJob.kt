@@ -40,12 +40,13 @@ object SpeechJob {
         context: Context,
         store: RecordingStore,
         id: String,
+        language: String,
         onProgress: (Int, Int) -> Unit,
     ): SpeechResult? {
         if (!running.compareAndSet(false, true)) return null
         cancelRequested = false
         try {
-            val opened = open(context)
+            val opened = open(context, language)
             engine = opened
             try {
                 if (cancelRequested) opened.cancel()
@@ -66,11 +67,11 @@ object SpeechJob {
     }
 
     /** モデルを開く。内容が合わないときは、入れ直して 1 度だけやり直す。 */
-    private fun open(context: Context): SpeechEngine {
+    private fun open(context: Context, language: String): SpeechEngine {
         fun openOnce(force: Boolean): SpeechEngine {
             val dir = installAssets(context, WHISPER_ASSET_DIR, listOf(WHISPER_FILE), force)
             return SpeechEngine.open(
-                java.io.File(dir, WHISPER_FILE).absolutePath, WHISPER_SHA256, "ja", SpeechQuality.FAST,
+                java.io.File(dir, WHISPER_FILE).absolutePath, WHISPER_SHA256, language, SpeechQuality.FAST,
                 Runtime.getRuntime().availableProcessors().coerceIn(1, 4).toUInt(),
             )
         }

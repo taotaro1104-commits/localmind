@@ -9,7 +9,7 @@ use lm_ingest::{
     FsChunkStore, IngestError, Minutes, MinutesItem, Stage, Transcript, TranscriptSegment,
 };
 use lm_llm::llama::{LlamaConfig, LlamaGenerator, OpenError};
-use lm_llm::{LlmMinutesExtractor, CANCELLED_MESSAGE, MAX_INPUT_CHARS, TOO_LONG_MESSAGE};
+use lm_llm::{Language, LlmMinutesExtractor, CANCELLED_MESSAGE, MAX_INPUT_CHARS, TOO_LONG_MESSAGE};
 
 use crate::error::LlmError;
 
@@ -195,6 +195,14 @@ impl MinutesEngine {
         Ok(Arc::new(Self::from_extractor(LlmMinutesExtractor::new(
             Box::new(generator),
         ))))
+    }
+
+    /// 議事録を書く言語を決める（`ja` か `en`。既定は `ja`）。次の抽出から効く。抽出は 1 つずつ行うこと。
+    pub fn set_language(&self, language: String) -> Result<(), LlmError> {
+        let lang = Language::from_code(&language)
+            .ok_or_else(|| invalid("言語は ja か en で指定してください"))?;
+        self.extractor.set_language(lang);
+        Ok(())
     }
 
     /// 実行中の抽出を止める（別のスレッドから呼べる）。止めた抽出は `Cancelled` を返す。

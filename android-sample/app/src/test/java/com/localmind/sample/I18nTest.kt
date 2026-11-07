@@ -104,3 +104,16 @@ class I18nTest {
         assertFalse(japanese.containsMatchIn(e.orEmpty()))
     }
 }
+
+class MeetingLanguageTest {
+    @Test
+    fun theDefaultMeetingLanguageFollowsTheScreenLanguage() {
+        assertEquals("ja", RecordPrefs.defaultMeetingLanguage(Lang.JA))
+        assertEquals("en", RecordPrefs.defaultMeetingLanguage(Lang.EN))
+    }
+
+    @Test
+    fun onlyJapaneseAndEnglishAreChoices() {
+        assertEquals(listOf("ja", "en"), RecordPrefs.MEETING_LANGUAGES)
+    }
+}

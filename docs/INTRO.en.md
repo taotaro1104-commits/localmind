@@ -37,7 +37,7 @@ and asking the AI (emulator, Japanese screens).*
 - **APK (Android)**: shared on [Google Drive](https://drive.google.com/drive/folders/1hfZGFiTYGIdArpSbNyXrt-hWH11323Wv?usp=drive_link) (`LocalMind-0.1.apk`, about 700 MB). It is signed with a key we
   generated ourselves, so your device will ask you to allow apps from unknown sources. Downloading over Wi-Fi is recommended.
   The AI models are not inside the APK; you download one separately the first time you use it.
-  SHA-256 (v0.1): `078f7c82afc78e46455492537aa14018be75717d00c0895ee2696f5b1c668224`
+  SHA-256 (v0.1): `271af8f42facb18a8b3d7aee237c60caf54254c093196a7b36fcd69e84e2d259`
 - **Source code**: [GitHub](https://github.com/taotaro1104-commits/localmind). The build steps are in [android-sample/README.md](../android-sample/README.md) (written in Japanese).
 
 ## What it does
@@ -48,7 +48,7 @@ and asking the AI (emulator, Japanese screens).*
 | Minutes | Writes a summary, decisions, action items and open issues from the transcript, using a local LLM (llama.cpp). Each item carries the time of the speech it is based on, and items that cannot cite a real utterance are left out. |
 | Document search | Imports text and Markdown documents by typing, from a file, from the share sheet, or from a **URL**. It combines full-text search (BM25) with semantic search and shows where the answer is, with the document, heading and line number. When there is no answer it says "not found". Documents can be put into **groups**, and both the list and the search range can be switched between them. |
 | Asking the AI | Ask questions without loading any document. By default it answers on the device alone. Only when you choose, it sends short search words made by the AI to the Japanese Wikipedia, after you confirm them, and answers from the results (with sources). |
-| Screen language | The app's screens are in Japanese and English, following the device language (or the per-app language on Android 13 and later). Transcription and minutes are tuned for Japanese for now. |
+| Screen language | The app's screens are in Japanese and English, following the device language (or the per-app language on Android 13 and later). The language of a meeting (Japanese or English) is chosen on the recording screen and used for the transcription and for the language the minutes are written in. |
 | Switching AI models | Pick Qwen2.5 0.5B, 1.5B or 3B, or give a URL for another model (GGUF) to download. Downloaded models stay on the device, and you can switch between them or delete them at any time. |
 
 ## Principles
