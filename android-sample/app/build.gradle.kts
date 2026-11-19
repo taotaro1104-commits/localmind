@@ -61,5 +61,5 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.19.1@aar")
     // ONNX Runtime の本体（libonnxruntime.so）だけを使う。Java API は呼ばない（推論は Rust 側）。
     // ort クレートが要求する API バージョン（24）以上であること。
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.32.0")
 }
